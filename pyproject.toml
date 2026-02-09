@@ -49,6 +49,13 @@ dependencies = [
   "nvidia-nvshmem-cu12; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')", # for deep_ep build
   "swanlab",
   "pyzmq",
+
+  "nvidia-resiliency-ext",
+  "nccl4py",                                                                                                          # for non-colocated refit
+  "cuda-bindings",                                                                                                    # for non-colocated refit
+  "pybase64",                                                                                                         # for sglang refit
+  "opentelemetry-api",
+  "opentelemetry-sdk",
 ]
 
 [project.optional-dependencies]
