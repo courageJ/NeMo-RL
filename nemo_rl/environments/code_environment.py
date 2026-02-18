@@ -206,6 +206,7 @@ class CodeEnvironment(EnvironmentInterface):
         self,
         message_log_batch: List[LLMMessageLogType],
         metadata_batch: List[CodeEnvMetadata],
+        otel_context: Optional[Dict[str, str]] = None,
         return_extracted_answer: bool = False,
     ) -> EnvironmentReturn:
         """Process a batch of code execution steps."""

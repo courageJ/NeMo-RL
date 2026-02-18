@@ -104,3 +104,10 @@ checkpointing:
 
 logger:
   log_dir: "logs/prorl"
+
+telemetry:
+  enabled: false
+  service_name: "nemo_rl"
+  service_version: "0.1.0"
+  exporter_type: "console"  # Options: "console", "otlp_http", "otlp_grpc", "none"
+  endpoint: null

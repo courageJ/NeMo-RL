@@ -55,6 +55,7 @@ dependencies = [
   "pybase64",                                                                                                         # for sglang refit
   "opentelemetry-api",
   "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp",
 ]
 
 [project.optional-dependencies]

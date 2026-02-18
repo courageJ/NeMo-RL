@@ -355,6 +355,7 @@ class SlidingPuzzleEnv(EnvironmentInterface[SlidingPuzzleMetadata]):
         self,
         message_log_batch: list[LLMMessageLogType],
         metadata: list[SlidingPuzzleMetadata],
+        otel_context: Optional[dict[str, str]] = None,
     ) -> EnvironmentReturn[SlidingPuzzleMetadata]:
         """Processes a batch of sliding puzzle interactions."""
         # Since logic is synchronous, process sequentially (can parallelize if logic becomes heavy)

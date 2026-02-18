@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TypedDict, Literal
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
@@ -53,8 +53,23 @@ RL_ENVIRONMENT_EPISODE_LENGTH_MEAN = "rl.environment.episode.length.mean"
 RL_TRAIN_LOSS = "rl.train.loss"
 
 
-def setup_telemetry(service_name: str = "nemo_rl", service_version: str = "0.1.0"):
+class TelemetryConfig(TypedDict):
+    enabled: bool
+    service_name: str
+    service_version: Optional[str]
+    exporter_type: Literal["console", "otlp_http", "otlp_grpc", "none"]
+    endpoint: Optional[str]
+
+
+def setup_telemetry(config: TelemetryConfig):
     """Sets up OpenTelemetry tracer and meter providers."""
+    service_name = config.get("service_name", "nemo_rl")
+    service_version = config.get("service_version", "0.1.0")
+    
+    if not config.get("enabled", False):
+         # If disabled, we return the no-op global tracer/meter provided by the API by default
+         return trace.get_tracer(service_name), metrics.get_meter(service_name)
+
     resource = Resource.create({
         SERVICE_NAME: service_name,
         "service.version": service_version,
@@ -62,23 +77,41 @@ def setup_telemetry(service_name: str = "nemo_rl", service_version: str = "0.1.0
 
     # Trace Provider
     trace_provider = TracerProvider(resource=resource)
-    # For now, we don't add an exporter by default to avoid noise,
-    # but one could be added here or configured via env vars.
-    # trace_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    exporter_type = config.get("exporter_type", "none")
+    endpoint = config.get("endpoint")
+    
+    if exporter_type == "console":
+        trace_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    elif exporter_type == "otlp_http":
+        try:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint) if endpoint else OTLPSpanExporter()))
+        except ImportError:
+            print("Warning: opentelemetry-exporter-otlp not installed. Skipping OTLP HTTP exporter.")
+    elif exporter_type == "otlp_grpc":
+        try:
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+            trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint) if endpoint else OTLPSpanExporter()))
+        except ImportError:
+            print("Warning: opentelemetry-exporter-otlp not installed. Skipping OTLP GRPC exporter.")
+            
     trace.set_tracer_provider(trace_provider)
 
     # Meter Provider
-    # metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
-    # meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-    meter_provider = MeterProvider(resource=resource)
+    metric_readers = []
+    if exporter_type == "console":
+        metric_readers.append(PeriodicExportingMetricReader(ConsoleMetricExporter()))
+    # Note: OTLP metrics setup would go here similarly
+
+    meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers)
     metrics.set_meter_provider(meter_provider)
 
     return trace.get_tracer(service_name), metrics.get_meter(service_name)
 
 
 class RLTelemetry:
-    def __init__(self, service_name: str = "nemo_rl", version: str = "0.1.0"):
-        self.tracer, self.meter = setup_telemetry(service_name, version)
+    def __init__(self, config: TelemetryConfig):
+        self.tracer, self.meter = setup_telemetry(config)
         
         # Histograms
         self.loop_duration = self.meter.create_histogram(RL_LOOP_DURATION, unit="ms", description="End-to-end duration of one RL loop iteration")
@@ -93,14 +126,7 @@ class RLTelemetry:
         self.train_steps = self.meter.create_counter(RL_TRAIN_STEPS_COUNT, description="Number of training steps completed")
         self.train_tokens = self.meter.create_counter(RL_TRAIN_TOKENS_COUNT, description="Number of tokens processed in training")
 
-        # Gauges (using UpDownCounter as Gauge interface in Python SDK is observable only usually, 
-        # but for simple setting values, we might use ObservableGauge with callbacks or just track manually.
-        # However, OTel Python Metrics API recommends using ObservableGauge for values that are read periodically.
-        # Since we want to set values explicitly, we can use a Histogram (distribution) or UpDownCounter if we want to track 'current' values roughly,
-        # but usually Gauges are asynchronous. 
-        # For simplicity in this sync context, we'll use Histograms for distribution of these values over time, 
-        # which is often what you want for 'mean reward' per step anyway.)
+        # Gauges/Histograms for values
         self.reward_mean = self.meter.create_histogram(RL_ENVIRONMENT_REWARD_MEAN, description="Mean reward achieved")
         self.episode_length_mean = self.meter.create_histogram(RL_ENVIRONMENT_EPISODE_LENGTH_MEAN, description="Mean episode length")
         self.train_loss = self.meter.create_histogram(RL_TRAIN_LOSS, description="Training loss")
-

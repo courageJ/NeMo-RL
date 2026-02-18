@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
-from typing import Generic, NamedTuple, TypeVar
+from typing import Generic, NamedTuple, TypeVar, Optional
 
 from torch import Tensor
 
@@ -55,6 +55,7 @@ class EnvironmentInterface(abc.ABC, Generic[MetadataT]):
         self,
         message_log_batch: list[LLMMessageLogType],
         metadata: list[MetadataT],
+        otel_context: Optional[dict[str, str]] = None,
     ) -> EnvironmentReturn[MetadataT]:
         """Runs a step in the environment. Allows for asynchrony with remote servers, but it's not required (this function is a ray remote).
 
@@ -76,6 +77,7 @@ class EnvironmentInterface(abc.ABC, Generic[MetadataT]):
                   ]
         metadata:     batch of whatever the environment needs to keep track of. I.e.
                       math solutions, code unit tests, or agent states. Can be None if episode terminated.
+        otel_context: Optional OpenTelemetry context dictionary for distributed tracing.
 
         Returns:
         - EnvironmentReturn NamedTuple containing observations, metadata, next_stop_strings, rewards, and terminateds flags.

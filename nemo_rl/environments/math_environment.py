@@ -15,7 +15,7 @@ import contextlib
 import io
 import logging
 import re
-from typing import Any, NotRequired, TypedDict, Union
+from typing import Any, NotRequired, TypedDict, Union, Optional, Dict
 
 import ray
 import torch
@@ -267,6 +267,7 @@ class MathEnvironment(EnvironmentInterface[MathEnvironmentMetadata]):
         self,
         message_log_batch: list[LLMMessageLogType],
         metadata: list[MathEnvironmentMetadata],
+        otel_context: Optional[Dict[str, str]] = None,
         return_extracted_answer: bool = False,
     ) -> EnvironmentReturn[MathEnvironmentMetadata]:
         """Runs a step in the math environment.
