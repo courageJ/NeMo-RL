@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, TypedDict, Union
+from typing import Any, Optional, TypedDict, Union, Dict
 
 import ray
 import torch
@@ -169,6 +169,7 @@ class CodeJaccardEnvironment(EnvironmentInterface[CodeJaccardEnvironmentMetadata
         self,
         message_log_batch: list[LLMMessageLogType],
         metadata: list[CodeJaccardEnvironmentMetadata],
+        otel_context: Optional[Dict[str, str]] = None,
         return_extracted_answer: bool = False,
     ) -> EnvironmentReturn[CodeJaccardEnvironmentMetadata]:
         """Runs a step in the CodeJaccard environment.

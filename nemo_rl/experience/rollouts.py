@@ -25,6 +25,7 @@ from typing import Any, Optional
 
 import ray
 import torch
+from opentelemetry import propagate
 from transformers import PreTrainedTokenizerBase
 from wandb import Histogram, Table
 
@@ -225,12 +226,14 @@ async def generate_responses_async(
 def calculate_rewards(
     batch: BatchedDataDict[DatumSpec],
     task_to_env: dict[str, EnvironmentInterface],
+    otel_context: Optional[dict[str, str]] = None,
 ) -> EnvironmentReturn:
     """Calculate rewards for generated responses and get environment feedback.
 
     Args:
         batch: Batch containing message_log (LLMMessageLogType) with generated responses
         task_to_env: Dictionary mapping task names to their corresponding environments
+        otel_context: Optional OpenTelemetry context for distributed tracing
 
     Returns:
         EnvironmentReturn namedtuple containing:
@@ -269,7 +272,7 @@ def calculate_rewards(
         env_info = [batch["extra_env_info"][i] for i in indices]
 
         # Submit task to environment and store future
-        future = task_to_env[task_name].step.remote(messages, env_info)  # type: ignore # ray actor call
+        future = task_to_env[task_name].step.remote(messages, env_info, otel_context=otel_context)  # type: ignore # ray actor call
         futures.append(future)
         future_to_indices[future] = indices
 
@@ -337,6 +340,7 @@ def run_multi_turn_rollout(
     max_seq_len: int,
     max_rollout_turns: int = 999999,
     greedy: bool = False,
+    otel_context: Optional[dict[str, str]] = None,
 ) -> tuple[BatchedDataDict[DatumSpec], dict[str, Any]]:
     """Runs a multi-turn rollout loop, interacting with the environment.
 
@@ -435,7 +439,7 @@ def run_multi_turn_rollout(
         total_gen_tokens_per_turn.append(sum(len(ids) for ids in generated_ids))
 
         # Calculate rewards and get environment feedback
-        env_output: EnvironmentReturn = calculate_rewards(active_batch, task_to_env)
+        env_output: EnvironmentReturn = calculate_rewards(active_batch, task_to_env, otel_context=otel_context)
 
         total_rewards[active_indices] += env_output.rewards
 
@@ -617,6 +621,7 @@ async def run_sample_multi_turn_rollout(
     max_seq_len: int,
     max_rollout_turns: int = 999999,
     greedy: bool = False,
+    otel_context: Optional[dict[str, str]] = None,
 ) -> tuple[dict, dict[str, Any]]:
     """Run a multi-turn rollout for a single sample.
 
@@ -710,7 +715,7 @@ async def run_sample_multi_turn_rollout(
         )
 
         # Get environment feedback
-        env_output = calculate_rewards(sample_batch, task_to_env)
+        env_output = calculate_rewards(sample_batch, task_to_env, otel_context=otel_context)
         # Update total reward
         total_reward += float(env_output.rewards[0].item())
         # Check termination
@@ -791,6 +796,7 @@ def run_async_multi_turn_rollout(
     max_seq_len: int,
     max_rollout_turns: int = 999999,
     greedy: bool = False,
+    otel_context: Optional[dict[str, str]] = None,
 ) -> tuple[BatchedDataDict[DatumSpec], dict[str, Any]]:
     """Run multi-turn rollouts with sample-level processing.
 
@@ -841,6 +847,7 @@ def run_async_multi_turn_rollout(
                     max_seq_len=max_seq_len,
                     max_rollout_turns=max_rollout_turns,
                     greedy=greedy,
+                    otel_context=otel_context,
                 )
                 return result
             except Exception as e:
@@ -981,6 +988,7 @@ def run_async_nemo_gym_rollout(
     max_seq_len: Optional[int] = None,
     max_rollout_turns: Optional[int] = None,
     greedy: bool = False,
+    otel_context: Optional[dict[str, str]] = None,
 ) -> AsyncNemoGymRolloutResult:
     """Run multi-turn rollouts with NeMo-Gym. Please refer to the `run_async_multi_turn_rollout` docs for more information on the parameters."""
     # We leverage the same `extra_env_info` key as `run_async_multi_turn_rollout`.
@@ -1027,7 +1035,7 @@ def run_async_nemo_gym_rollout(
         nemo_gym_environment = task_to_env["nemo_gym"]
         results, rollout_loop_timing_metrics = ray.get(
             nemo_gym_environment.run_rollouts.remote(
-                nemo_gym_rows, tokenizer, timer_prefix
+                nemo_gym_examples=nemo_gym_rows, tokenizer=tokenizer, timer_prefix=timer_prefix, otel_context=otel_context
             )
         )
 

@@ -75,9 +75,10 @@ from nemo_rl.utils.nsys import maybe_gpu_profile_step
 from nemo_rl.utils.timer import TimeoutChecker, Timer
 from nemo_rl.utils.venvs import create_local_venv_on_each_node
 from nemo_rl import __version__
-from opentelemetry import trace
+from opentelemetry import trace, propagate
 from nemo_rl.utils.otel import (
     RLTelemetry,
+    TelemetryConfig,
     RL_SYSTEM, RL_SYSTEM_VERSION, RL_RUN_ID, RL_ALGORITHM, RL_ENVIRONMENT_NAME, RL_MODEL_NAME,
     RL_LOOP, RL_LOOP_ITERATION,
     RL_SAMPLE, RL_SAMPLE_EPISODES, RL_SAMPLE_STEPS, RL_SAMPLE_BATCH_SIZE,
@@ -186,6 +187,7 @@ class MasterConfig(TypedDict):
     logger: GRPOLoggerConfig
     cluster: ClusterConfig
     checkpointing: CheckpointingConfig
+    telemetry: NotRequired[TelemetryConfig]
 
 
 # ===============================================================================
@@ -1003,7 +1005,14 @@ def grpo_train(
     """Run GRPO training algorithm."""
     timer = Timer()
     # Initialize telemetry
-    telemetry = RLTelemetry(service_name="nemo_rl", version=__version__)
+    telemetry_config = master_config.get("telemetry", {
+        "enabled": False,
+        "service_name": "nemo_rl",
+        "service_version": __version__,
+        "exporter_type": "none",
+        "endpoint": None
+    })
+    telemetry = RLTelemetry(telemetry_config)
     
     timeout = TimeoutChecker(
         timeout=master_config["checkpointing"]["checkpoint_must_save_by"],
@@ -1107,6 +1116,8 @@ def grpo_train(
     
                     # Generate responses - this updates the LLMMessageLogType in repeated_batch
                     with telemetry.tracer.start_as_current_span(RL_SAMPLE) as sample_span:
+                        otel_context = {}
+                        propagate.inject(otel_context)
                         memory_tracker.snapshot_start_of_stage("Generation", dir())
                         print(
                             f"▶ Generating responses for batch of size {repeated_batch.size}...",
@@ -1179,6 +1190,7 @@ def grpo_train(
                                     generation_config=generation_config,
                                     max_rollout_turns=None,
                                     greedy=False,
+                                    otel_context=otel_context,
                                 )
                                 input_ids = nemo_gym_rollout_result.input_ids
                                 repeated_batch = nemo_gym_rollout_result.final_batch
@@ -1207,7 +1219,9 @@ def grpo_train(
                                     max_rollout_turns=master_config["grpo"][
                                         "max_rollout_turns"
                                     ],
-                                    greedy=False,                                )
+                                    greedy=False,
+                                    otel_context=otel_context,
+                                )
                             else:
                                 repeated_batch, rollout_metrics = run_multi_turn_rollout(
                                     policy_generation=policy_generation,
@@ -1221,6 +1235,7 @@ def grpo_train(
                                         "max_rollout_turns"
                                     ],
                                     greedy=False,
+                                    otel_context=otel_context,
                                 )
                             policy_generation.finish_generation()
                             # Collect generation logger metrics for performance reporting after each generation step

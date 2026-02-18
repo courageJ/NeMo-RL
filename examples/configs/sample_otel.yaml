@@ -1,0 +1,8 @@
+defaults: "grpo_math_1B.yaml"
+
+telemetry:
+  enabled: true
+  service_name: "nemo_rl_job"
+  # service_version: "0.1.0"
+  exporter_type: "otlp_grpc"  # or "otlp_http" or "console"
+  # endpoint: "http://localhost:4317" # Optional if env var OTEL_EXPORTER_OTLP_ENDPOINT is set

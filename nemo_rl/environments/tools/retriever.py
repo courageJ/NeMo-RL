@@ -14,7 +14,7 @@
 import math
 import re
 from collections import Counter
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, TypedDict, Optional
 
 import ray
 import torch
@@ -162,6 +162,7 @@ class RAGEnvironment(EnvironmentInterface):
         self,
         message_log_batch: List[LLMMessageLogType],
         metadata_batch: List[Dict[str, Any]],
+        otel_context: Optional[Dict[str, str]] = None,
         return_extracted_answer: bool = False,
     ) -> EnvironmentReturn:
         """Process a batch of retrieval steps."""

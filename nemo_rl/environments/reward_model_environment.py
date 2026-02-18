@@ -231,6 +231,7 @@ class RewardModelEnvironment(EnvironmentInterface):
         self,
         message_logs: List[LLMMessageLogType],
         env_infos: List[Dict[str, Any]],
+        otel_context: Optional[Dict[str, str]] = None,
     ) -> EnvironmentReturn:
         """Calculate rewards for the given message logs using the reward model.
 

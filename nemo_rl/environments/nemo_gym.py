@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from pathlib import Path
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, TypedDict, Optional
 
 import ray
 import torch
@@ -108,6 +108,7 @@ Depending on your data shape, you may want to change these values."""
         nemo_gym_examples: list[dict],
         tokenizer: PreTrainedTokenizerBase,
         timer_prefix: str,
+        otel_context: Optional[dict[str, str]] = None,
     ) -> list[dict]:
         timer = Timer()
 
@@ -208,7 +209,7 @@ Output prompt token IDs: {output_item_dict["prompt_token_ids"]}
     def shutdown(self) -> None:
         self.rh.shutdown()
 
-    def step(self, message_log_batch, metadata):
+    def step(self, message_log_batch, metadata, otel_context=None):
         # This is not used since NeMo-Gym will handle the rollouts entirely.
         raise NotImplementedError
 

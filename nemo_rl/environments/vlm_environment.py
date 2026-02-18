@@ -144,6 +144,7 @@ class VLMEnvironment(EnvironmentInterface):
         self,
         message_log_batch: list[list[dict[str, str]]],
         metadata: list[VLMEnvironmentMetadata],
+        otel_context: Optional[dict[str, str]] = None,
     ) -> EnvironmentReturn:
         """Runs a step in the vlm environment.
 
