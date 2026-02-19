@@ -18,6 +18,7 @@ ENV NRL_CONTAINER=1
 USER root
 
 RUN <<"EOF" bash -exu -o pipefail
+
 export DEBIAN_FRONTEND=noninteractive
 export TZ=America/Los_Angeles
 

@@ -37,7 +37,7 @@ CACHED_DEPENDENCIES = [
     "omegaconf",
     "gradio",
     "mlflow",
-    "tdigest>=0.5.2.2",
+    "orjson",
     "aiohttp",
     "yappi",
     "ray[default]",
