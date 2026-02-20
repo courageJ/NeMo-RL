@@ -75,7 +75,6 @@ from nemo_rl.utils.nsys import maybe_gpu_profile_step
 from nemo_rl.utils.timer import TimeoutChecker, Timer
 from nemo_rl.utils.venvs import create_local_venv_on_each_node
 from nemo_rl import __version__
-from opentelemetry import trace, propagate
 from nemo_rl.utils.otel import (
     RLTelemetry,
     TelemetryConfig,
@@ -86,6 +85,8 @@ from nemo_rl.utils.otel import (
     RL_TRAIN, RL_TRAIN_STEPS, RL_TRAIN_BATCH_SIZE, RL_TRAIN_TOKENS,
     RL_SYNC, RL_SYNC_BYTES, RL_SYNC_SOURCE, RL_SYNC_DESTINATION
 )
+from nemo_rl.utils.memory_tracker import MemoryTracker
+from opentelemetry import trace, propagate
 
 # ===============================================================================
 # Configuration
@@ -1010,16 +1011,19 @@ def grpo_train(
         "service_name": "nemo_rl",
         "service_version": __version__,
         "exporter_type": "none",
-        "endpoint": None
+        "endpoint": None,
+        "log_metrics": True
     })
     telemetry = RLTelemetry(telemetry_config)
     
+    print(f"Synced TELEMETRY CONFIG: {telemetry_config}", flush=True)
     timeout = TimeoutChecker(
         timeout=master_config["checkpointing"]["checkpoint_must_save_by"],
         fit_last_save_time=True,
     )
     timeout.start_iterations()
 
+    memory_tracker = MemoryTracker()
     kv_scales_cache = None  # Cache reused for computed kv scales
 
     NEED_REFIT = True
@@ -1088,7 +1092,7 @@ def grpo_train(
                 # A central place to store logging data that won't be deleted until the loop ends
                 metrics_logging_data = dict()
                 metrics = dict()
-                    print(
+                print(
                     f"\n{'=' * 25} Step {current_step + 1}/{min(len(dataloader), max_num_steps)} {'=' * 25}",
                     flush=True,
                 )
@@ -1099,7 +1103,8 @@ def grpo_train(
     
                 with timer.time("total_step_time"):
                     # Prepare batch
-                    print("▶ Preparing batch...", flush=True)
+                    print("▶1104 Synced Preparing batch...", flush=True)
+                    print(f"1105 Synced TELEMETRY CONFIG: {telemetry_config}", flush=True)
                     with timer.time("data_processing"):
                         # Repeat batch items
                         repeated_batch: BatchedDataDict[DatumSpec] = (
@@ -1120,9 +1125,10 @@ def grpo_train(
                         propagate.inject(otel_context)
                         memory_tracker.snapshot_start_of_stage("Generation", dir())
                         print(
-                            f"▶ Generating responses for batch of size {repeated_batch.size}...",
+                            f"▶ 1126 Generating responses for batch of size {repeated_batch.size}...",
                             flush=True,
                         )
+                        print(f"1129 Synced TELEMETRY CONFIG: {telemetry_config}", flush=True)
                         with timer.time("prepare_for_generation/total"):
                             if NEED_REFIT and POLICY_GENERATION_STALE:
                                 # Compute KV scales if needed for FP8 quantization
@@ -1330,20 +1336,11 @@ def grpo_train(
                             # Save baseline for logging (before deletion)
                             baseline_for_log = baseline.clone()
         
-                            # Extract prompt-only messages for advantage estimation
-                            prompt_only_message_logs = _extract_prompt_only_messages(
-                                repeated_batch["message_log"]
-                            )
-                            prompt_batched_flat, _ = batched_message_log_to_flat_message(
-                                prompt_only_message_logs,
-                                pad_value_dict={"token_ids": tokenizer.pad_token_id},
-                            )
-                            prompt_ids_for_adv = prompt_batched_flat["token_ids"]
-                            del prompt_only_message_logs
-                            del prompt_batched_flat
-                            del input_ids
-                            del baseline
-                            del std
+
+                        # prompt_ids_for_adv preparation removed as it was only for adv_estimator
+                        del input_ids
+                        del baseline
+                        del std
                         telemetry.reward_duration.record(timer.get("reward_calculation") * 1000)
                         telemetry.reward_mean.record(rewards.float().mean().item())
     
@@ -1435,31 +1432,25 @@ def grpo_train(
                         del logprob_data
                         del extra_multimodal_data
     
-                    # Compute advantages with adv_estimator using correct mask and logprobs
+
+                    # Compute advantages (simple GRPO: advantage = reward - baseline)
                     with timer.time("advantage_calculation"):
                         print("▶ Computing advantages...", flush=True)
-                        # Get token-level mask: token_mask * sample_mask
-                        token_mask = train_data["token_mask"]
-                        sample_mask = train_data["sample_mask"]
-                        mask = token_mask * sample_mask.unsqueeze(-1)
-    
-                        train_data["advantages"] = adv_estimator.compute_advantage(
-                            prompt_ids=prompt_ids_for_adv,
-                            rewards=rewards,
-                            mask=mask,
-                            logprobs_policy=train_data["prev_logprobs"],
-                            logprobs_reference=train_data.get("reference_policy_logprobs"),
-                        )
-                        del prompt_ids_for_adv
-    
+                        
+                        # Already calculated above: advantages = (rewards - baseline).unsqueeze(-1)
+                        # Expand to match sequence length for token-level loss/ratio compatibility
+                        seq_len = train_data["input_ids"].shape[1]
+                        train_data["advantages"] = advantages.expand(-1, seq_len)
+
                         # Log rewards and advantages information
-                        _log_mixed_rewards_and_advantages_information(
-                            logger=logger,
-                            total_steps=total_steps,
-                            metrics=metrics,
-                            baseline=baseline_for_log,
-                            advantages=train_data["advantages"],
-                        )
+                        if (total_steps + 1) % 10 == 0:
+                            metrics["reward_mean"] = rewards.mean().item()
+                            metrics["reward_std"] = rewards.std().item()
+                            metrics["advantage_mean"] = advantages.mean().item()
+                            metrics["advantage_std"] = advantages.std().item()
+                            if isinstance(baseline, torch.Tensor):
+                                metrics["baseline_mean"] = baseline.mean().item()
+
                         del baseline_for_log
     
                     memory_tracker.snapshot_start_of_stage("Policy train", dir())
@@ -1795,6 +1786,16 @@ def grpo_train(
                 performance_metrics = print_performance_metrics(
                     train_results, metrics, timing_metrics, master_config
                 )
+
+                telemetry.step_time.record(total_time * 1000)
+                if "tokens_per_sec_per_gpu" in performance_metrics:
+                    telemetry.tokens_per_sec_per_gpu.record(performance_metrics["tokens_per_sec_per_gpu"])
+                if "samples_per_sec" in performance_metrics:
+                    telemetry.samples_per_sec.record(performance_metrics["samples_per_sec"])
+                if "samples_per_sec_per_gpu" in performance_metrics:
+                    telemetry.samples_per_sec_per_gpu.record(performance_metrics["samples_per_sec_per_gpu"])
+                if "train_fp_utilization" in performance_metrics:
+                    telemetry.training_mfu.record(performance_metrics["train_fp_utilization"])
     
                 logger.log_metrics(metrics, total_steps + 1, prefix="train")
                 logger.log_metrics(
@@ -1830,6 +1831,8 @@ def grpo_train(
                 if should_save_by_timeout:
                     memory_tracker.snapshot_start_of_stage("", dir())
                     print("Timeout has been reached, stopping training early", flush=True)
+                    if telemetry_config.get("enabled", False):
+                        telemetry.flush()
                     return
                 if total_steps >= max_num_steps:
                     memory_tracker.snapshot_start_of_stage("", dir())
@@ -1837,12 +1840,15 @@ def grpo_train(
                         "Max number of steps has been reached, stopping training early",
                         flush=True,
                     )
+                    if telemetry_config.get("enabled", False):
+                        telemetry.flush()
                     return
     
         current_epoch += 1
         current_step = 0  # Reset step counter for new epoch
 
-
+    if telemetry_config.get("enabled", False):
+        telemetry.flush()
 def validate(
     policy_generation: GenerationInterface,
     val_dataloader: Optional[StatefulDataLoader],
@@ -2040,6 +2046,18 @@ def async_grpo_train(
     from nemo_rl.algorithms.async_utils import AsyncTrajectoryCollector, ReplayBuffer
 
     timer = Timer()
+    # Initialize telemetry
+    telemetry_config = master_config.get("telemetry", {
+        "enabled": False,
+        "service_name": "nemo_rl",
+        "service_version": __version__,
+        "exporter_type": "none",
+        "endpoint": None,
+        "log_metrics": True
+    })
+    telemetry = RLTelemetry(telemetry_config)
+    print(f"async TELEMETRY CONFIG: {telemetry_config}", flush=True)
+    
     timeout = TimeoutChecker(
         timeout=master_config["checkpointing"]["checkpoint_must_save_by"],
         fit_last_save_time=True,
@@ -2248,194 +2266,202 @@ def async_grpo_train(
             print(
                 f"\n{'=' * 25} Step {step + 1}/{master_config['grpo']['max_num_steps']} {'=' * 25}"
             )
-            maybe_gpu_profile_step(policy, step + 1)
-            if policy != policy_generation:
-                maybe_gpu_profile_step(policy_generation, step + 1)
-
-            with timer.time("total_step_time"):
-                # Sample trajectories from replay buffer
-                print("📦 Sampling from replay buffer...")
-                with timer.time("exposed_generation"):
-                    buffer_size_current = ray.get(replay_buffer.size.remote())
-                    print(
-                        f"📊 Step coordination: training_step={step}, max_age={max_trajectory_age_steps}, buffer_size={buffer_size_current}"
-                    )
-
-                    # Sample the required number of per-prompt groups.
-                    num_prompt_groups_needed = master_config["grpo"][
-                        "num_prompts_per_step"
-                    ]
-                    sample_result = ray.get(
-                        replay_buffer.sample.remote(
-                            num_prompt_groups=num_prompt_groups_needed,
-                            current_weight_version=weight_version,
-                            max_age_steps=max_trajectory_age_steps,
-                        )
-                    )
-
-                    if (
-                        sample_result is None
-                        or len(sample_result["trajectories"])
-                        != num_prompt_groups_needed
-                    ):
+            with telemetry.tracer.start_as_current_span(RL_LOOP, attributes={RL_LOOP_ITERATION: step + 1}) as loop_span:
+                maybe_gpu_profile_step(policy, step + 1)
+                if policy != policy_generation:
+                    maybe_gpu_profile_step(policy_generation, step + 1)
+    
+                with timer.time("total_step_time"):
+                    # Sample trajectories from replay buffer
+                    print("📦 Sampling from replay buffer...")
+                    with timer.time("exposed_generation"):
+                        buffer_size_current = ray.get(replay_buffer.size.remote())
                         print(
-                            "⏳ Buffer empty or not enough groups to form a full step, waiting..."
+                            f"📊 Step coordination: training_step={step}, max_age={max_trajectory_age_steps}, buffer_size={buffer_size_current}"
                         )
-
-                        # Get buffer debug info to help diagnose the issue
-                        buffer_debug = ray.get(replay_buffer.get_debug_info.remote())
-                        buffer_size = buffer_debug["total_trajectories"]
-
-                        if buffer_size > 0:
-                            print(
-                                f"🔍 Debug: Buffer has {buffer_size} trajectories but sampling requires exactly {num_prompt_groups_needed}."
+    
+                        # Sample the required number of per-prompt groups.
+                        num_prompt_groups_needed = master_config["grpo"][
+                            "num_prompts_per_step"
+                        ]
+                        sample_result = ray.get(
+                            replay_buffer.sample.remote(
+                                num_prompt_groups=num_prompt_groups_needed,
+                                current_weight_version=weight_version,
+                                max_age_steps=max_trajectory_age_steps,
                             )
-                            print(f"   Current weight version: {weight_version}")
-                            print(f"   Max trajectory age: {max_trajectory_age_steps}")
+                        )
+    
+                        if (
+                            sample_result is None
+                            or len(sample_result["trajectories"])
+                            != num_prompt_groups_needed
+                        ):
                             print(
-                                f"   Trajectory versions in buffer: {buffer_debug['trajectory_versions']}"
+                                "⏳ Buffer empty or not enough groups to form a full step, waiting..."
                             )
-
+    
+                            # Get buffer debug info to help diagnose the issue
+                            buffer_debug = ray.get(replay_buffer.get_debug_info.remote())
+                            buffer_size = buffer_debug["total_trajectories"]
+    
+                            if buffer_size > 0:
+                                print(
+                                    f"🔍 Debug: Buffer has {buffer_size} trajectories but sampling requires exactly {num_prompt_groups_needed}."
+                                )
+                                print(f"   Current weight version: {weight_version}")
+                                print(f"   Max trajectory age: {max_trajectory_age_steps}")
+                                print(
+                                    f"   Trajectory versions in buffer: {buffer_debug['trajectory_versions']}"
+                                )
+    
+                            time.sleep(0.5)
+                            continue
+    
+                        # Extract trajectories and metadata from sample result
+                        trajectories = sample_result["trajectories"]
+                        avg_trajectory_age = sample_result["avg_trajectory_age"]
+    
+                        print(
+                            f"✅ Sampled {len(trajectories)} trajectory groups from buffer (avg age: {avg_trajectory_age:.2f} steps)"
+                        )
+    
+                        # Concatenate per-prompt groups into a single training batch
+                        per_prompt_batches = [t["batch"] for t in trajectories]
+                        repeated_batch = BatchedDataDict.from_batches(per_prompt_batches)
+                        # Aggregate rollout metrics across groups (simple mean where applicable)
+                        rollout_metrics = {}
+                        for t in trajectories:
+                            for k, v in t["rollout_metrics"].items():
+                                rollout_metrics.setdefault(k, []).append(v)
+                        # TODO: this simple averaging might cause misleading information for such data as max_gen_tokens, etc.
+                        rollout_metrics = {
+                            k: (sum(v) / len(v) if isinstance(v[0], (int, float)) else v)
+                            for k, v in rollout_metrics.items()
+                        }
+    
+                        telemetry.sample_duration.record(timer.get("exposed_generation") * 1000)
+                        telemetry.sample_samples.add(repeated_batch.size)
+    
+                    # Enforce fixed training batch: num_prompts_per_step * num_generations_per_prompt
+                    expected_batch_size = (
+                        master_config["grpo"]["num_prompts_per_step"]
+                        * master_config["grpo"]["num_generations_per_prompt"]
+                    )
+                    if repeated_batch.size != expected_batch_size:
+                        print(
+                            f"❌ Unexpected training batch size: got {repeated_batch.size}, expected {expected_batch_size}. Skipping step and waiting for correct buffer content."
+                        )
                         time.sleep(0.5)
                         continue
-
-                    # Extract trajectories and metadata from sample result
-                    trajectories = sample_result["trajectories"]
-                    avg_trajectory_age = sample_result["avg_trajectory_age"]
-
-                    print(
-                        f"✅ Sampled {len(trajectories)} trajectory groups from buffer (avg age: {avg_trajectory_age:.2f} steps)"
-                    )
-
-                    # Concatenate per-prompt groups into a single training batch
-                    per_prompt_batches = [t["batch"] for t in trajectories]
-                    repeated_batch = BatchedDataDict.from_batches(per_prompt_batches)
-                    # Aggregate rollout metrics across groups (simple mean where applicable)
-                    rollout_metrics = {}
-                    for t in trajectories:
-                        for k, v in t["rollout_metrics"].items():
-                            rollout_metrics.setdefault(k, []).append(v)
-                    # TODO: this simple averaging might cause misleading information for such data as max_gen_tokens, etc.
-                    rollout_metrics = {
-                        k: (sum(v) / len(v) if isinstance(v[0], (int, float)) else v)
-                        for k, v in rollout_metrics.items()
-                    }
-
-                # Enforce fixed training batch: num_prompts_per_step * num_generations_per_prompt
-                expected_batch_size = (
-                    master_config["grpo"]["num_prompts_per_step"]
-                    * master_config["grpo"]["num_generations_per_prompt"]
-                )
-                if repeated_batch.size != expected_batch_size:
-                    print(
-                        f"❌ Unexpected training batch size: got {repeated_batch.size}, expected {expected_batch_size}. Skipping step and waiting for correct buffer content."
-                    )
-                    time.sleep(0.5)
-                    continue
-
-                # Optional sanity: ensure DP divisibility to avoid sharding issues
-                dp_size = policy.sharding_annotations.get_axis_size("data_parallel")
-                if expected_batch_size % dp_size != 0:
-                    raise AssertionError(
-                        f"Configuration error: (num_prompts_per_step * num_generations_per_prompt) = {expected_batch_size} must be divisible by data_parallel size {dp_size}."
-                    )
-
-                print(f"Got trajectory batch (size: {repeated_batch.size})")
+    
+                    # Optional sanity: ensure DP divisibility to avoid sharding issues
+                    dp_size = policy.sharding_annotations.get_axis_size("data_parallel")
+                    if expected_batch_size % dp_size != 0:
+                        raise AssertionError(
+                            f"Configuration error: (num_prompts_per_step * num_generations_per_prompt) = {expected_batch_size} must be divisible by data_parallel size {dp_size}."
+                        )
+    
+                    print(f"Got trajectory batch (size: {repeated_batch.size})")
 
                 print("▶ Processing rewards...")
-                with timer.time("reward_calculation"):
-                    prompt_only_message_logs = []
-                    for message_log in repeated_batch["message_log"]:
-                        prompt_only_log = []
-                        for message in message_log:
-                            if message["role"] == "user" or message["role"] == "system":
-                                prompt_only_log.append(message)
-                        prompt_only_message_logs.append(prompt_only_log)
-
-                    prompt_batched_flat, prompt_input_lengths = (
-                        batched_message_log_to_flat_message(
-                            prompt_only_message_logs,
-                            pad_value_dict={"token_ids": tokenizer.pad_token_id},
-                        )
-                    )
-                    prompt_only_ids = prompt_batched_flat["token_ids"]
-
-                    rewards = repeated_batch["total_reward"]
-
-                    print("▶ Computing advantages...")
-
-                    baseline, std = calculate_baseline_and_std_per_prompt(
-                        prompt_only_ids,
-                        rewards,
-                        torch.ones_like(rewards),
-                        leave_one_out_baseline=master_config["grpo"][
-                            "use_leave_one_out_baseline"
-                        ],
-                    )
-                    advantages = (rewards - baseline).unsqueeze(-1)
-
-                    print(
-                        f"  📊 Rewards stats: min={rewards.min():.4f}, max={rewards.max():.4f}, mean={rewards.mean():.4f}, std={rewards.std():.4f}"
-                    )
-                    print(
-                        f"  📊 Baseline stats: min={baseline.min():.4f}, max={baseline.max():.4f}, mean={baseline.mean():.4f}"
-                    )
-                    print(
-                        f"  📊 Advantages stats: min={advantages.min():.4f}, max={advantages.max():.4f}, mean={advantages.mean():.4f}, std={advantages.std():.4f}"
-                    )
-
-                    if master_config["grpo"]["normalize_rewards"]:
-                        advantages = normalize_advantages_with_epsilon(
-                            advantages=advantages,
-                            std=std,
-                        )
-
-                        print(
-                            f"  📊 Normalized advantages stats: min={advantages.min():.4f}, max={advantages.max():.4f}, mean={advantages.mean():.4f}, std={advantages.std():.4f}"
-                        )
-
-                # Prepare training data (same as sync version)
-                with timer.time("data_processing"):
-                    # Add loss mask and advantages to each message
-                    for i, message_log in enumerate(repeated_batch["message_log"]):
-                        for j, message in enumerate(message_log):
-                            if message["role"] == "assistant":
-                                message["token_loss_mask"] = torch.ones_like(
-                                    message["token_ids"]
-                                )
-                            else:
-                                message["token_loss_mask"] = torch.zeros_like(
-                                    message["token_ids"]
-                                )
-                            if "generation_logprobs" not in message:
-                                message["generation_logprobs"] = torch.zeros_like(
-                                    message["token_ids"], dtype=torch.float32
-                                )
-                            message["advantages"] = advantages[i].expand(
-                                message["token_ids"].shape
+                with telemetry.tracer.start_as_current_span(RL_REWARD) as reward_span:
+                    with timer.time("reward_calculation"):
+                        prompt_only_message_logs = []
+                        for message_log in repeated_batch["message_log"]:
+                            prompt_only_log = []
+                            for message in message_log:
+                                if message["role"] == "user" or message["role"] == "system":
+                                    prompt_only_log.append(message)
+                            prompt_only_message_logs.append(prompt_only_log)
+    
+                        prompt_batched_flat, prompt_input_lengths = (
+                            batched_message_log_to_flat_message(
+                                prompt_only_message_logs,
+                                pad_value_dict={"token_ids": tokenizer.pad_token_id},
                             )
-
-                    # Convert to flat format for training
-                    flat_messages, input_lengths = batched_message_log_to_flat_message(
-                        repeated_batch["message_log"],
-                        pad_value_dict={"token_ids": tokenizer.pad_token_id},
-                        make_sequence_length_divisible_by=master_config["policy"][
-                            "make_sequence_length_divisible_by"
-                        ],
-                    )
-
-                    # Create training data
-                    train_data = BatchedDataDict[ClippedPGLossDataDict](
-                        {
-                            "input_ids": flat_messages["token_ids"],
-                            "input_lengths": input_lengths,
-                            "advantages": flat_messages["advantages"],
-                            "generation_logprobs": flat_messages["generation_logprobs"],
-                            "token_mask": flat_messages["token_loss_mask"],
-                            "sample_mask": repeated_batch["loss_multiplier"],
-                        }
-                    )
-                    train_data.to("cpu")
+                        )
+                        prompt_only_ids = prompt_batched_flat["token_ids"]
+    
+                        rewards = repeated_batch["total_reward"]
+    
+                        print("▶ Computing advantages...")
+    
+                        baseline, std = calculate_baseline_and_std_per_prompt(
+                            prompt_only_ids,
+                            rewards,
+                            torch.ones_like(rewards),
+                            leave_one_out_baseline=master_config["grpo"][
+                                "use_leave_one_out_baseline"
+                            ],
+                        )
+                        advantages = (rewards - baseline).unsqueeze(-1)
+    
+                        print(
+                            f"  📊 Rewards stats: min={rewards.min():.4f}, max={rewards.max():.4f}, mean={rewards.mean():.4f}, std={rewards.std():.4f}"
+                        )
+                        print(
+                            f"  📊 Baseline stats: min={baseline.min():.4f}, max={baseline.max():.4f}, mean={baseline.mean():.4f}"
+                        )
+                        print(
+                            f"  📊 Advantages stats: min={advantages.min():.4f}, max={advantages.max():.4f}, mean={advantages.mean():.4f}, std={advantages.std():.4f}"
+                        )
+    
+                        if master_config["grpo"]["normalize_rewards"]:
+                            advantages = normalize_advantages_with_epsilon(
+                                advantages=advantages,
+                                std=std,
+                            )
+    
+                            print(
+                                f"  📊 Normalized advantages stats: min={advantages.min():.4f}, max={advantages.max():.4f}, mean={advantages.mean():.4f}, std={advantages.std():.4f}"
+                            )
+    
+                    # Prepare training data (same as sync version)
+                    with timer.time("data_processing"):
+                        # Add loss mask and advantages to each message
+                        for i, message_log in enumerate(repeated_batch["message_log"]):
+                            for j, message in enumerate(message_log):
+                                if message["role"] == "assistant":
+                                    message["token_loss_mask"] = torch.ones_like(
+                                        message["token_ids"]
+                                    )
+                                else:
+                                    message["token_loss_mask"] = torch.zeros_like(
+                                        message["token_ids"]
+                                    )
+                                if "generation_logprobs" not in message:
+                                    message["generation_logprobs"] = torch.zeros_like(
+                                        message["token_ids"], dtype=torch.float32
+                                    )
+                                message["advantages"] = advantages[i].expand(
+                                    message["token_ids"].shape
+                                )
+    
+                        # Convert to flat format for training
+                        flat_messages, input_lengths = batched_message_log_to_flat_message(
+                            repeated_batch["message_log"],
+                            pad_value_dict={"token_ids": tokenizer.pad_token_id},
+                            make_sequence_length_divisible_by=master_config["policy"][
+                                "make_sequence_length_divisible_by"
+                            ],
+                        )
+    
+                        # Create training data
+                        train_data = BatchedDataDict[ClippedPGLossDataDict](
+                            {
+                                "input_ids": flat_messages["token_ids"],
+                                "input_lengths": input_lengths,
+                                "advantages": flat_messages["advantages"],
+                                "generation_logprobs": flat_messages["generation_logprobs"],
+                                "token_mask": flat_messages["token_loss_mask"],
+                                "sample_mask": repeated_batch["loss_multiplier"],
+                            }
+                        )
+                        train_data.to("cpu")
+                        
+                        telemetry.reward_duration.record(timer.get("reward_calculation") * 1000)
+                        telemetry.reward_mean.record(rewards.float().mean().item())
 
                 # Training phase (same as sync version)
                 print("▶ Preparing for logprob inference...")
@@ -2457,8 +2483,13 @@ def async_grpo_train(
                     POLICY_GENERATION_STALE = True
 
                 print("▶ Training policy...")
-                with timer.time("policy_training"):
-                    train_results = policy.train(train_data, loss_fn)
+                with telemetry.tracer.start_as_current_span(RL_TRAIN) as train_span:
+                    with timer.time("policy_training"):
+                        train_results = policy.train(train_data, loss_fn)
+                    
+                    telemetry.train_duration.record(timer.get("policy_training") * 1000)
+                    telemetry.train_steps.add(1)
+                    telemetry.train_loss.record(train_results["loss"].item())
 
                 print("🔄 Synchronizing policy weights to trajectory collector…")
                 vllm_logger_metrics = None
@@ -2747,20 +2778,36 @@ def async_grpo_train(
                 train_results, metrics, timing_metrics, master_config
             )
 
+            telemetry.step_time.record(total_time * 1000)
+            if "tokens_per_sec_per_gpu" in performance_metrics:
+                telemetry.tokens_per_sec_per_gpu.record(performance_metrics["tokens_per_sec_per_gpu"])
+            if "samples_per_sec" in performance_metrics:
+                telemetry.samples_per_sec.record(performance_metrics["samples_per_sec"])
+            if "samples_per_sec_per_gpu" in performance_metrics:
+                telemetry.samples_per_sec_per_gpu.record(performance_metrics["samples_per_sec_per_gpu"])
+            if "train_fp_utilization" in performance_metrics:
+                telemetry.training_mfu.record(performance_metrics["train_fp_utilization"])
+
             logger.log_metrics(performance_metrics, step + 1, prefix="performance")
             logger.log_metrics(metrics, step + 1, prefix="train")
             logger.log_metrics(timing_metrics, step + 1, prefix="timing/train")
+            
+            telemetry.loop_duration.record(total_time * 1000)
 
             timer.reset()
             step += 1
             if should_save_by_timeout:
                 print("Timeout has been reached, stopping training early", flush=True)
+                if telemetry_config.get("enabled", False):
+                    telemetry.flush()
                 return
             if step >= master_config["grpo"]["max_num_steps"]:
                 print(
                     "Max number of steps has been reached, stopping training early",
                     flush=True,
                 )
+                if telemetry_config.get("enabled", False):
+                    telemetry.flush()
                 return
 
     except Exception as e:

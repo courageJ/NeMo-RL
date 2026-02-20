@@ -1,0 +1,164 @@
+{
+  "displayName": "NeMo-RL Telemetry Dashboard",
+  "gridLayout": {
+    "columns": "2",
+    "widgets": [
+      {
+        "title": "RL Step Time & Loop Duration",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "histogram_quantile(0.99, sum(rate(rl_step_time_milliseconds_bucket[1m])) by (le))"
+              }
+            },
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "histogram_quantile(0.99, sum(rate(rl_loop_duration_milliseconds_bucket[1m])) by (le))"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Throughput (Tokens/sec/GPU & Samples/sec)",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "avg(rl_tokens_per_sec_per_gpu)"
+              }
+            },
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y2",
+              "timeSeriesQuery": {
+                "prometheusQuery": "avg(rl_samples_per_sec)"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Training Loss & Reward",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "avg(rl_train_loss)"
+              }
+            },
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y2",
+              "timeSeriesQuery": {
+                "prometheusQuery": "avg(rl_environment_reward_mean)"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Phase Durations (Sample, Reward, Train)",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "histogram_quantile(0.95, sum(rate(rl_sample_duration_milliseconds_bucket[1m])) by (le))"
+              }
+            },
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "histogram_quantile(0.95, sum(rate(rl_reward_duration_milliseconds_bucket[1m])) by (le))"
+              }
+            },
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "histogram_quantile(0.95, sum(rate(rl_train_duration_milliseconds_bucket[1m])) by (le))"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Model Floating Point Utilization (MFU)",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "avg(rl_training_mfu)"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "title": "Counts (Steps & Samples)",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "prometheusQuery": "sum(rate(rl_train_steps_total[1m]))"
+              }
+            },
+            {
+              "minAlignmentPeriod": "60s",
+              "plotType": "LINE",
+              "targetAxis": "Y2",
+              "timeSeriesQuery": {
+                "prometheusQuery": "sum(rate(rl_sample_samples_total[1m]))"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -278,6 +278,13 @@ env:
     num_workers: 8
     math_verify_impl: "hf_math_verify"
 
+telemetry:
+  enabled: true
+  service_name: "nemo-rl"
+  service_version: "0.1.0"
+  exporter_type: "otlp_http"
+  log_metrics: true  # Set to true to log all telemetry metric recorded/added to standard logger
+
 logger:
   log_dir: "logs"  # Base directory for all logs
   num_val_samples_to_print: 0 # Number of validation samples to pretty print on terminal

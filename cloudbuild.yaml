@@ -1,0 +1,6 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '--tag', 'gcr.io/gke-shared-ai-dev/nemo-rl:otel2', '--target', 'hermetic', '-f', 'docker/Dockerfile', '.']
+options:
+  machineType: 'E2_HIGHCPU_32' # Example: 32 vCPUs
+images: ['gcr.io/gke-shared-ai-dev/nemo-rl:otel2']

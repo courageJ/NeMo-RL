@@ -1,0 +1,276 @@
+displayName: 'NeMo-RL Metrics (Branch)'
+gridLayout:
+  columns: '3'
+  widgets:
+  - title: 'Training Loss'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.train.loss"
+            aggregation:
+              perSeriesAligner: ALIGN_MEAN
+              crossSeriesReducer: REDUCE_MEAN
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: LINE
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Mean Reward'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.environment.reward.mean"
+            aggregation:
+              perSeriesAligner: ALIGN_MEAN
+              crossSeriesReducer: REDUCE_MEAN
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: LINE
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Mean Episode Length'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.environment.episode.length.mean"
+            aggregation:
+              perSeriesAligner: ALIGN_MEAN
+              crossSeriesReducer: REDUCE_MEAN
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: LINE
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Training Steps (Rate)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.train.steps"
+            aggregation:
+              perSeriesAligner: ALIGN_RATE
+              crossSeriesReducer: REDUCE_SUM
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: LINE
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Tokens Processed (Rate)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.train.tokens"
+            aggregation:
+              perSeriesAligner: ALIGN_RATE
+              crossSeriesReducer: REDUCE_SUM
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: LINE
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Samples Generated (Rate)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.sample.samples"
+            aggregation:
+              perSeriesAligner: ALIGN_RATE
+              crossSeriesReducer: REDUCE_SUM
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: LINE
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Episodes Completed (Rate)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.sample.episodes"
+            aggregation:
+              perSeriesAligner: ALIGN_RATE
+              crossSeriesReducer: REDUCE_SUM
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: LINE
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Loop Duration (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.loop.duration"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: ms
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Sample Duration (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.sample.duration"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: ms
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Reward Duration (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.reward.duration"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: ms
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Train Duration (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.train.duration"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: ms
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Sync Duration (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.sync.duration"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: ms
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Step Time (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.step_time"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: ms
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Tokens/sec/GPU (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.tokens_per_sec_per_gpu"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Training MFU (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.training_mfu"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Samples/sec (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.samples_per_sec"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
+  - title: 'Samples/sec/GPU (Heatmap)'
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="custom.googleapis.com/rl.samples_per_sec_per_gpu"
+            aggregation:
+              perSeriesAligner: ALIGN_DELTA
+              crossSeriesReducer: REDUCE_NONE
+              alignmentPeriod: 60s
+          unitOverride: '1'
+        plotType: HEATMAP
+      timeshiftDuration: 0s
+      yAxis:
+        label: y1
+        scale: LINEAR
