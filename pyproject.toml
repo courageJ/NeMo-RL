@@ -49,6 +49,9 @@ dependencies = [
   "nvidia-nvshmem-cu12; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')", # for deep_ep build
   "swanlab",
   "pyzmq",
+  "opentelemetry-api>=1.33.1",
+  "opentelemetry-sdk>=1.33.1",
+  "opentelemetry-exporter-otlp>=1.11.1",
 ]
 
 [project.optional-dependencies]

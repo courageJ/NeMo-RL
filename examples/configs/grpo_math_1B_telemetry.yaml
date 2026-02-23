@@ -1,0 +1,9 @@
+# GRPO Algorithm Configuration with Telemetry
+defaults: "grpo_math_1B.yaml"
+
+telemetry:
+  enabled: true
+  service_name: 'nemo_rl_grpo'
+  service_version: '0.1.0'
+  exporter_type: 'otlp_http'
+  endpoint: 'http://localhost:4318'

@@ -998,6 +998,24 @@ def grpo_train(
     processor: Optional[AutoProcessor] = None,
 ) -> None:
     """Run GRPO training algorithm."""
+    from nemo_rl.utils.otel import (
+        RL_LOOP,
+        RL_LOOP_ITERATION,
+        RL_REWARD,
+        RL_REWARD_BATCH_SIZE,
+        RL_SAMPLE,
+        RL_SAMPLE_EPISODES,
+        RL_SYNC,
+        RL_TRAIN,
+        RL_TRAIN_BATCH_SIZE,
+        RL_TRAIN_TOKENS,
+        RLTelemetry,
+    )
+    from opentelemetry import trace
+
+    telemetry = RLTelemetry(master_config.get("telemetry", {}))
+    tracer = trace.get_tracer("nemo_rl")
+
     timer = Timer()
     timeout = TimeoutChecker(
         timeout=master_config["checkpointing"]["checkpoint_must_save_by"],
@@ -1078,7 +1096,7 @@ def grpo_train(
                 maybe_gpu_profile_step(policy_generation, total_steps + 1)
             val_metrics, validation_timings = None, None
 
-            with timer.time("total_step_time"):
+            with timer.time("total_step_time"), tracer.start_as_current_span(RL_LOOP, attributes={RL_LOOP_ITERATION: current_step + 1}):
                 # Prepare batch
                 print("▶ Preparing batch...", flush=True)
                 with timer.time("data_processing"):
@@ -1147,7 +1165,7 @@ def grpo_train(
                         policy_generation.prepare_for_generation()
 
                 dynamic_sampling_num_gen_batches += 1
-                with timer.time("generation"):
+                with timer.time("generation"), tracer.start_as_current_span(RL_SAMPLE, attributes={RL_SAMPLE_EPISODES: master_config["grpo"]["num_prompts_per_step"]}):
                     # Clear vLLM logger metrics for each generation step
                     if policy_generation is not None and hasattr(
                         policy_generation, "clear_vllm_logger_metrics"
@@ -1224,7 +1242,7 @@ def grpo_train(
 
                 # Calculate rewards & advantages
                 print("▶ Processing rewards...,", flush=True)
-                with timer.time("reward_calculation"):
+                with timer.time("reward_calculation"), tracer.start_as_current_span(RL_REWARD, attributes={RL_REWARD_BATCH_SIZE: repeated_batch.size}):
                     # Extract rewards from final_batch
                     rewards = repeated_batch["total_reward"]
 
@@ -1334,7 +1352,7 @@ def grpo_train(
                     policy.prepare_for_lp_inference()
 
                 print("▶ Computing logprobs...", flush=True)
-                with timer.time("policy_and_reference_logprobs"):
+                with timer.time("policy_and_reference_logprobs"), tracer.start_as_current_span(RL_TRAIN, attributes={RL_TRAIN_BATCH_SIZE: train_data["input_ids"].shape[0], RL_TRAIN_TOKENS: int(input_lengths.sum().item())}):
                     fprop_logprobs = policy.get_logprobs(train_data)["logprobs"]
                     reference_logprobs = policy.get_reference_policy_logprobs(
                         train_data
@@ -1353,7 +1371,7 @@ def grpo_train(
 
                 # Recompute KV scales after policy training if needed
                 if sync_kv_scales:
-                    with timer.time("recompute_kv_scales"):
+                    with timer.time("recompute_kv_scales"), tracer.start_as_current_span(RL_SYNC):
                         print(
                             "▶ Recomputing KV cache scales after policy update...",
                             flush=True,
@@ -1657,6 +1675,32 @@ def grpo_train(
             )
             logger.log_metrics(timing_metrics, total_steps + 1, prefix="timing/train")
 
+            telemetry.loop_duration.record(timing_metrics.get("total_step_time", 0) * 1000)
+            telemetry.sample_duration.record(timing_metrics.get("generation", 0) * 1000)
+            telemetry.reward_duration.record(timing_metrics.get("reward_calculation", 0) * 1000)
+            telemetry.train_duration.record(
+                (timing_metrics.get("policy_training", 0) + timing_metrics.get("policy_and_reference_logprobs", 0) + timing_metrics.get("training_prep", 0)) * 1000
+            )
+
+            telemetry.sample_samples.add(metrics.get("global_valid_seqs", 0))
+            telemetry.sample_episodes.add(master_config["grpo"]["num_prompts_per_step"])
+            telemetry.train_steps.add(1)
+            telemetry.train_tokens.add(metrics.get("total_num_tokens", 0))
+
+            telemetry.reward_mean.record(np.mean(rewards.numpy()))
+            telemetry.episode_length_mean.record(rollout_metrics.get("mean_gen_tokens_per_sample", 0))    
+            telemetry.train_loss.record(metrics.get("loss", 0))
+
+            telemetry.step_time.record(timing_metrics.get("total_step_time", 0) * 1000)
+            telemetry.tokens_per_sec.record(performance_metrics.get("tokens_per_sec", 0))    
+            telemetry.tokens_per_sec_per_gpu.record(performance_metrics.get("tokens_per_sec_per_gpu", 0))
+            
+            if "train_fp_utilization" in performance_metrics:
+                telemetry.training_mfu.record(performance_metrics.get("train_fp_utilization", 0))
+            
+            telemetry.samples_per_sec.record(performance_metrics.get("samples_per_sec", 0))
+            telemetry.samples_per_sec_per_gpu.record(performance_metrics.get("samples_per_sec_per_gpu", 0))
+
             # Reset the batch and set dynamic_sampling_num_gen_batches to 0
             batch_cache = None
             dynamic_sampling_num_gen_batches = 0
@@ -1853,6 +1897,24 @@ def async_grpo_train(
         master_config: Master configuration
         max_trajectory_age_steps: Maximum age (in training steps) for trajectories to be used in training
     """
+    from nemo_rl.utils.otel import (
+        RL_LOOP,
+        RL_LOOP_ITERATION,
+        RL_REWARD,
+        RL_REWARD_BATCH_SIZE,
+        RL_SAMPLE,
+        RL_SAMPLE_EPISODES,
+        RL_SYNC,
+        RL_TRAIN,
+        RL_TRAIN_BATCH_SIZE,
+        RL_TRAIN_TOKENS,
+        RLTelemetry,
+    )
+    from opentelemetry import trace
+
+    telemetry = RLTelemetry(master_config.get("telemetry", {}))
+    tracer = trace.get_tracer("nemo_rl")
+
     # Ensure we are running with a compatible async generation backend
     assert _should_use_async_rollouts(master_config), (
         "Async GRPO requires vLLM backend with vllm_cfg.async_engine=True. "
@@ -2087,10 +2149,10 @@ def async_grpo_train(
             if policy != policy_generation:
                 maybe_gpu_profile_step(policy_generation, step + 1)
 
-            with timer.time("total_step_time"):
+            with timer.time("total_step_time"), tracer.start_as_current_span(RL_LOOP, attributes={RL_LOOP_ITERATION: step + 1}):
                 # Sample trajectories from replay buffer
                 print("📦 Sampling from replay buffer...")
-                with timer.time("exposed_generation"):
+                with timer.time("exposed_generation"), tracer.start_as_current_span(RL_SAMPLE, attributes={RL_SAMPLE_EPISODES: master_config["grpo"]["num_prompts_per_step"]}):
                     buffer_size_current = ray.get(replay_buffer.size.remote())
                     print(
                         f"📊 Step coordination: training_step={step}, max_age={max_trajectory_age_steps}, buffer_size={buffer_size_current}"
@@ -2178,7 +2240,7 @@ def async_grpo_train(
                 print(f"Got trajectory batch (size: {repeated_batch.size})")
 
                 print("▶ Processing rewards...")
-                with timer.time("reward_calculation"):
+                with timer.time("reward_calculation"), tracer.start_as_current_span(RL_REWARD, attributes={RL_REWARD_BATCH_SIZE: repeated_batch.size}):
                     prompt_only_message_logs = []
                     for message_log in repeated_batch["message_log"]:
                         prompt_only_log = []
@@ -2278,7 +2340,7 @@ def async_grpo_train(
                     policy.prepare_for_lp_inference()
 
                 print("▶ Computing logprobs...")
-                with timer.time("policy_and_reference_logprobs"):
+                with timer.time("policy_and_reference_logprobs"), tracer.start_as_current_span(RL_TRAIN, attributes={RL_TRAIN_BATCH_SIZE: train_data["input_ids"].shape[0], RL_TRAIN_TOKENS: int(input_lengths.sum().item())}):
                     fprop_logprobs = policy.get_logprobs(train_data)["logprobs"]
                     reference_logprobs = policy.get_reference_policy_logprobs(
                         train_data
@@ -2316,7 +2378,7 @@ def async_grpo_train(
 
                     # Only the actual refit/weight transfer should be counted as weight_sync
                     print("🔄 Performing policy generation refit...")
-                    with timer.time("weight_sync"):
+                    with timer.time("weight_sync"), tracer.start_as_current_span(RL_SYNC):
                         refit_policy_generation(
                             policy, policy_generation, colocated_inference
                         )
@@ -2585,6 +2647,33 @@ def async_grpo_train(
             logger.log_metrics(performance_metrics, step + 1, prefix="performance")
             logger.log_metrics(metrics, step + 1, prefix="train")
             logger.log_metrics(timing_metrics, step + 1, prefix="timing/train")
+
+            telemetry.loop_duration.record(timing_metrics.get("total_step_time", 0) * 1000)
+            telemetry.sample_duration.record(timing_metrics.get("exposed_generation", 0) * 1000)
+            telemetry.reward_duration.record(timing_metrics.get("reward_calculation", 0) * 1000)
+            telemetry.sync_duration.record((timing_metrics.get("weight_sync", 0) + timing_metrics.get("logprob_inference_prep", 0)) * 1000)
+            telemetry.train_duration.record(
+                (timing_metrics.get("policy_training", 0) + timing_metrics.get("policy_and_reference_logprobs", 0) + timing_metrics.get("training_prep", 0)) * 1000
+            )
+
+            telemetry.sample_samples.add(metrics.get("global_valid_seqs", 0))
+            telemetry.sample_episodes.add(master_config["grpo"]["num_prompts_per_step"])
+            telemetry.train_steps.add(1)
+            telemetry.train_tokens.add(metrics.get("total_num_tokens", 0))
+
+            telemetry.reward_mean.record(np.mean(rewards.numpy()))
+            telemetry.episode_length_mean.record(rollout_metrics.get("mean_gen_tokens_per_sample", 0))    
+            telemetry.train_loss.record(metrics.get("loss", 0))
+
+            telemetry.step_time.record(timing_metrics.get("total_step_time", 0) * 1000)
+            telemetry.tokens_per_sec.record(performance_metrics.get("tokens_per_sec", 0))    
+            telemetry.tokens_per_sec_per_gpu.record(performance_metrics.get("tokens_per_sec_per_gpu", 0))
+            
+            if "train_fp_utilization" in performance_metrics:
+                telemetry.training_mfu.record(performance_metrics.get("train_fp_utilization", 0))
+            
+            telemetry.samples_per_sec.record(performance_metrics.get("samples_per_sec", 0))
+            telemetry.samples_per_sec_per_gpu.record(performance_metrics.get("samples_per_sec_per_gpu", 0))
 
             timer.reset()
             step += 1

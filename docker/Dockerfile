@@ -89,6 +89,7 @@ COPY --from=nemo-rl --link 3rdparty/ ./3rdparty/
 
 RUN --mount=type=ssh <<"EOF" bash -exu
 uv venv --seed
+uv lock
 if [[ -n "${BUILD_CUSTOM_VLLM:-}" ]]; then
     bash tools/build-custom-vllm.sh
     source 3rdparty/vllm/nemo-rl.env
