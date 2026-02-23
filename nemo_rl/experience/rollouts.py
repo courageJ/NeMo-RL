@@ -49,6 +49,7 @@ from nemo_rl.models.generation.interfaces import (
     GenerationOutputSpec,
 )
 from nemo_rl.utils.timer import Timer
+import nemo_rl.utils.telemetry as telemetry
 
 TokenizerType = PreTrainedTokenizerBase
 
@@ -636,151 +637,161 @@ async def run_sample_multi_turn_rollout(
     Returns:
         Tuple of (final_sample_state, sample_metrics)
     """
-    # Initialize sample state
-    current_message_log = copy.deepcopy(initial_sample_state["message_log"])
-    current_extra_env_info = copy.deepcopy(initial_sample_state["extra_env_info"])
-    current_stop_strings = initial_sample_state.get("stop_strings", None)
-    task_name = initial_sample_state["task_name"]
+    tracer = telemetry.get_tracer()
+    with tracer.start_as_current_span(telemetry.SPAN_EPISODE) as span:
+        span.set_attribute(telemetry.ATTR_EPISODE_ID, sample_idx)
+        span.set_attribute(telemetry.ATTR_ENV_NAME, task_to_env.keys().__iter__().__next__()) # Heuristic for env name
 
-    # Sample-level metrics
-    total_reward = 0.0
-    turn_count = 0
-    token_count = 0
-    assistant_token_count = 0
-    env_token_count = 0
-    terminated = False
-    truncated = False
-    max_turns_reached = False
+        # Initialize sample state
+        current_message_log = copy.deepcopy(initial_sample_state["message_log"])
+        current_extra_env_info = copy.deepcopy(initial_sample_state["extra_env_info"])
+        current_stop_strings = initial_sample_state.get("stop_strings", None)
+        task_name = initial_sample_state["task_name"]
 
-    # Track per-turn metrics
-    turn_gen_tokens = []
-    turn_input_tokens = []
-    turn_total_tokens = []
-    # Track per-turn per-worker token accounting if available
-    per_worker_token_counts = {}  # worker_idx -> token_count
+        # Sample-level metrics
+        total_reward = 0.0
+        turn_count = 0
+        token_count = 0
+        assistant_token_count = 0
+        env_token_count = 0
+        terminated = False
+        truncated = False
+        max_turns_reached = False
 
-    for turn in range(max_rollout_turns):
-        if terminated or truncated:
-            break
+        # Track per-turn metrics
+        turn_gen_tokens = []
+        turn_input_tokens = []
+        turn_total_tokens = []
+        # Track per-turn per-worker token accounting if available
+        per_worker_token_counts = {}  # worker_idx -> token_count
 
-        turn_count += 1
+        for turn in range(max_rollout_turns):
+            if terminated or truncated:
+                break
 
-        # Generate response for this sample using async generation
-        try:
-            (
-                updated_message_log,
-                generated_tokens,
-                input_lengths,
-                gen_metrics,
-            ) = await async_generate_response_for_sample_turn(
-                policy_generation,
-                current_message_log,
-                current_stop_strings,
-                tokenizer,
-                max_seq_len,
-                greedy=greedy,
+            turn_count += 1
+
+            # Generate response for this sample using async generation
+            try:
+                (
+                    updated_message_log,
+                    generated_tokens,
+                    input_lengths,
+                    gen_metrics,
+                ) = await async_generate_response_for_sample_turn(
+                    policy_generation,
+                    current_message_log,
+                    current_stop_strings,
+                    tokenizer,
+                    max_seq_len,
+                    greedy=greedy,
+                )
+                current_message_log = updated_message_log
+
+                # Update token counts
+                gen_token_count = len(generated_tokens)
+                assistant_token_count += gen_token_count
+                token_count += gen_token_count
+                turn_gen_tokens.append(gen_token_count)
+                turn_input_tokens.append(int(input_lengths))
+                turn_total_tokens.append(int(input_lengths) + gen_token_count)
+                # Per-worker load accounting
+                if "gen_leader_worker_idx" in gen_metrics:
+                    worker_idx = int(gen_metrics["gen_leader_worker_idx"])
+                    per_worker_token_counts[worker_idx] = (
+                        per_worker_token_counts.get(worker_idx, 0) + gen_token_count
+                    )
+
+            except Exception as e:
+                print(f"Error generating response for sample {sample_idx}: {e}")
+                span.record_exception(e)
+                break
+
+            # Create single-sample batch for environment interaction
+            sample_batch = BatchedDataDict[DatumSpec](
+                {
+                    "message_log": [current_message_log],
+                    "extra_env_info": [current_extra_env_info],
+                    "task_name": [task_name],
+                }
             )
-            current_message_log = updated_message_log
+
+            # Get environment feedback
+            env_output = calculate_rewards(sample_batch, task_to_env)
+            # Update total reward
+            total_reward += float(env_output.rewards[0].item())
+            # Check termination
+            terminated = env_output.terminateds[0].item()
+            env_obs_content = env_output.observations[0]["content"]
+            # Tokenize environment response
+            tokenized_obs = tokenizer(
+                env_obs_content, return_tensors="pt", add_special_tokens=False
+            ).input_ids[0]
+
+            # Check for sequence length overflow
+            if input_lengths + gen_token_count + len(tokenized_obs) >= max_seq_len:
+                # Truncate environment observation
+                max_env_tokens = max_seq_len - input_lengths - gen_token_count
+                if max_env_tokens > 0:
+                    tokenized_obs = tokenized_obs[:max_env_tokens]
+                else:
+                    tokenized_obs = torch.empty(0, dtype=tokenized_obs.dtype)
+                truncated = True
+
+            env_message = {
+                "role": env_output.observations[0]["role"],
+                "content": env_obs_content,
+                "token_ids": tokenized_obs,
+            }
+            current_message_log.append(env_message)
 
             # Update token counts
-            gen_token_count = len(generated_tokens)
-            assistant_token_count += gen_token_count
-            token_count += gen_token_count
-            turn_gen_tokens.append(gen_token_count)
-            turn_input_tokens.append(int(input_lengths))
-            turn_total_tokens.append(int(input_lengths) + gen_token_count)
-            # Per-worker load accounting
-            if "gen_leader_worker_idx" in gen_metrics:
-                worker_idx = int(gen_metrics["gen_leader_worker_idx"])
-                per_worker_token_counts[worker_idx] = (
-                    per_worker_token_counts.get(worker_idx, 0) + gen_token_count
-                )
+            env_token_count += len(tokenized_obs)
+            token_count += len(tokenized_obs)
 
-        except Exception as e:
-            print(f"Error generating response for sample {sample_idx}: {e}")
-            break
+            # Update sample state for next turn
+            if not terminated and not truncated:
+                if env_output.next_stop_strings[0] is not None:
+                    current_stop_strings = env_output.next_stop_strings[0]
+                if env_output.metadata[0] is not None:
+                    current_extra_env_info = env_output.metadata[0]
 
-        # Create single-sample batch for environment interaction
-        sample_batch = BatchedDataDict[DatumSpec](
-            {
-                "message_log": [current_message_log],
-                "extra_env_info": [current_extra_env_info],
-                "task_name": [task_name],
-            }
-        )
+        # Check if max turns reached
+        if turn_count >= max_rollout_turns:
+            max_turns_reached = True
 
-        # Get environment feedback
-        env_output = calculate_rewards(sample_batch, task_to_env)
-        # Update total reward
-        total_reward += float(env_output.rewards[0].item())
-        # Check termination
-        terminated = env_output.terminateds[0].item()
-        env_obs_content = env_output.observations[0]["content"]
-        # Tokenize environment response
-        tokenized_obs = tokenizer(
-            env_obs_content, return_tensors="pt", add_special_tokens=False
-        ).input_ids[0]
+        span.set_attribute(telemetry.ATTR_REWARD, float(total_reward))
+        span.set_attribute(telemetry.ATTR_DONE, terminated or truncated)
+        span.set_attribute(telemetry.METRIC_EPISODE_LENGTH, turn_count)
 
-        # Check for sequence length overflow
-        if input_lengths + gen_token_count + len(tokenized_obs) >= max_seq_len:
-            # Truncate environment observation
-            max_env_tokens = max_seq_len - input_lengths - gen_token_count
-            if max_env_tokens > 0:
-                tokenized_obs = tokenized_obs[:max_env_tokens]
-            else:
-                tokenized_obs = torch.empty(0, dtype=tokenized_obs.dtype)
-            truncated = True
-
-        env_message = {
-            "role": env_output.observations[0]["role"],
-            "content": env_obs_content,
-            "token_ids": tokenized_obs,
+        # Prepare final sample state
+        final_sample_state = {
+            "message_log": current_message_log,
+            "extra_env_info": current_extra_env_info,
+            "task_name": task_name,
+            "total_reward": torch.tensor(total_reward),
+            "stop_strings": current_stop_strings,
+            "idx": sample_idx,
         }
-        current_message_log.append(env_message)
 
-        # Update token counts
-        env_token_count += len(tokenized_obs)
-        token_count += len(tokenized_obs)
+        # Sample metrics
+        sample_metrics = {
+            "turn_count": turn_count,
+            "total_tokens": token_count,
+            "assistant_tokens": assistant_token_count,
+            "env_tokens": env_token_count,
+            "terminated": terminated,
+            "truncated": truncated,
+            "max_turns_reached": max_turns_reached,
+            "total_reward": total_reward,
+            "turn_gen_tokens": turn_gen_tokens,
+            "turn_input_tokens": turn_input_tokens,
+            "turn_total_tokens": turn_total_tokens,
+            # Pass-through per-worker per-turn accounting for aggregation at batch level
+            "per_worker_token_counts": per_worker_token_counts,
+        }
 
-        # Update sample state for next turn
-        if not terminated and not truncated:
-            if env_output.next_stop_strings[0] is not None:
-                current_stop_strings = env_output.next_stop_strings[0]
-            if env_output.metadata[0] is not None:
-                current_extra_env_info = env_output.metadata[0]
-
-    # Check if max turns reached
-    if turn_count >= max_rollout_turns:
-        max_turns_reached = True
-
-    # Prepare final sample state
-    final_sample_state = {
-        "message_log": current_message_log,
-        "extra_env_info": current_extra_env_info,
-        "task_name": task_name,
-        "total_reward": torch.tensor(total_reward),
-        "stop_strings": current_stop_strings,
-        "idx": sample_idx,
-    }
-
-    # Sample metrics
-    sample_metrics = {
-        "turn_count": turn_count,
-        "total_tokens": token_count,
-        "assistant_tokens": assistant_token_count,
-        "env_tokens": env_token_count,
-        "terminated": terminated,
-        "truncated": truncated,
-        "max_turns_reached": max_turns_reached,
-        "total_reward": total_reward,
-        "turn_gen_tokens": turn_gen_tokens,
-        "turn_input_tokens": turn_input_tokens,
-        "turn_total_tokens": turn_total_tokens,
-        # Pass-through per-worker per-turn accounting for aggregation at batch level
-        "per_worker_token_counts": per_worker_token_counts,
-    }
-
-    return final_sample_state, sample_metrics
+        return final_sample_state, sample_metrics
 
 
 def run_async_multi_turn_rollout(

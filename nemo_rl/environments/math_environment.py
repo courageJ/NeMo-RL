@@ -37,6 +37,7 @@ from nemo_rl.environments.metrics import (
 )
 from nemo_rl.environments.utils import chunk_list_to_workers
 from nemo_rl.evals import answer_parsing
+import nemo_rl.utils.telemetry as telemetry
 
 
 class MathEnvConfig(TypedDict):
@@ -239,6 +240,8 @@ class MathEnvironmentMetadata(TypedDict):
 class MathEnvironment(EnvironmentInterface[MathEnvironmentMetadata]):
     def __init__(self, cfg: MathEnvConfig):
         self.cfg = cfg
+        telemetry.configure_opentelemetry()
+        self.tracer = telemetry.get_tracer()
         self.num_workers = cfg["num_workers"]
         # TODO: split out this environment since it's doing more than just math
         verifier_type = cfg.get("verifier_type", "math")
@@ -283,76 +286,79 @@ class MathEnvironment(EnvironmentInterface[MathEnvironmentMetadata]):
                 - Tensor: Rewards tensor
                 - Tensor: Done flags tensor
         """
-        # Extract the assistant's responses from the message history
-        # Each message list should have at least one assistant response
-        assistant_response_batch = []
-        for conversation in message_log_batch:
-            assistant_responses = [
-                str(interaction["content"])
-                for interaction in conversation
-                if interaction["role"] == "assistant"
+        with telemetry.trace_step(self.tracer, "MathEnvironment", len(message_log_batch)) as span:
+            # Extract the assistant's responses from the message history
+            # Each message list should have at least one assistant response
+            assistant_response_batch = []
+            for conversation in message_log_batch:
+                assistant_responses = [
+                    str(interaction["content"])
+                    for interaction in conversation
+                    if interaction["role"] == "assistant"
+                ]
+                assistant_response_batch.append("".join(assistant_responses))
+
+            ground_truths = [g["ground_truth"] for g in metadata]
+
+            chunked_assistant_response_batch = chunk_list_to_workers(
+                assistant_response_batch, self.num_workers
+            )
+            chunked_ground_truths = chunk_list_to_workers(ground_truths, self.num_workers)
+
+            # Process each chunk in parallel
+            futures = [
+                self.workers[i].verify.remote(
+                    chunk,
+                    ground_truth_chunk,
+                    return_extracted_answer,
+                    math_verify_impl=self.cfg.get("math_verify_impl", "hf_math_verify"),
+                )
+                for i, (chunk, ground_truth_chunk) in enumerate(
+                    zip(chunked_assistant_response_batch, chunked_ground_truths)
+                )
             ]
-            assistant_response_batch.append("".join(assistant_responses))
 
-        ground_truths = [g["ground_truth"] for g in metadata]
+            worker_results = ray.get(futures)
 
-        chunked_assistant_response_batch = chunk_list_to_workers(
-            assistant_response_batch, self.num_workers
-        )
-        chunked_ground_truths = chunk_list_to_workers(ground_truths, self.num_workers)
-
-        # Process each chunk in parallel
-        futures = [
-            self.workers[i].verify.remote(
-                chunk,
-                ground_truth_chunk,
-                return_extracted_answer,
-                math_verify_impl=self.cfg.get("math_verify_impl", "hf_math_verify"),
+            # Flatten the results and extract both scores and answers
+            results = []
+            extracted_answers: list[str | None] | None = (
+                [] if return_extracted_answer else None
             )
-            for i, (chunk, ground_truth_chunk) in enumerate(
-                zip(chunked_assistant_response_batch, chunked_ground_truths)
+
+            for worker_result in worker_results:
+                if return_extracted_answer:
+                    worker_scores, worker_answers = worker_result
+                    results.extend(worker_scores)
+                    extracted_answers.extend(worker_answers)
+                else:
+                    results.extend(worker_result)
+
+            observations = [
+                {
+                    "role": "environment",
+                    "content": "Environment: correct"
+                    if result
+                    else "Environment: incorrect",
+                }
+                for result in results
+            ]
+
+            # create a tensor of rewards and done flags
+            rewards = torch.tensor(results).cpu()
+            done = torch.ones_like(rewards).cpu()
+            next_stop_strings = [None] * len(message_log_batch)
+
+            span.set_attribute(telemetry.ATTR_REWARD, float(rewards.mean().item()))
+
+            return EnvironmentReturn(
+                observations=observations,
+                metadata=metadata,
+                next_stop_strings=next_stop_strings,
+                rewards=rewards,
+                terminateds=done,
+                answers=extracted_answers,
             )
-        ]
-
-        worker_results = ray.get(futures)
-
-        # Flatten the results and extract both scores and answers
-        results = []
-        extracted_answers: list[str | None] | None = (
-            [] if return_extracted_answer else None
-        )
-
-        for worker_result in worker_results:
-            if return_extracted_answer:
-                worker_scores, worker_answers = worker_result
-                results.extend(worker_scores)
-                extracted_answers.extend(worker_answers)
-            else:
-                results.extend(worker_result)
-
-        observations = [
-            {
-                "role": "environment",
-                "content": "Environment: correct"
-                if result
-                else "Environment: incorrect",
-            }
-            for result in results
-        ]
-
-        # create a tensor of rewards and done flags
-        rewards = torch.tensor(results).cpu()
-        done = torch.ones_like(rewards).cpu()
-        next_stop_strings = [None] * len(message_log_batch)
-
-        return EnvironmentReturn(
-            observations=observations,
-            metadata=metadata,
-            next_stop_strings=next_stop_strings,
-            rewards=rewards,
-            terminateds=done,
-            answers=extracted_answers,
-        )
 
     def global_post_process_and_metrics(
         self, batch: BatchedDataDict[Any]

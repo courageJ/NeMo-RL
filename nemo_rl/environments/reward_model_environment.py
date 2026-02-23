@@ -31,6 +31,7 @@ from nemo_rl.models.generation.interfaces import GenerationDatumSpec
 from nemo_rl.models.generation.vllm import VllmConfig
 from nemo_rl.models.policy import DynamicBatchingConfig, SequencePackingConfig
 from nemo_rl.models.policy.lm_policy import Policy
+import nemo_rl.utils.telemetry as telemetry
 
 
 class RewardModelEnvironmentConfig(TypedDict):
@@ -98,6 +99,8 @@ class RewardModelEnvironment(EnvironmentInterface):
         print(f"📋 Received config: {config}")
 
         self.config = config
+        telemetry.configure_opentelemetry()
+        self.tracer = telemetry.get_tracer()
 
         assert self.config["reward_model_cfg"]["enabled"], (
             "Please set reward_model_cfg.enabled = True in the reward model environment config to enable reward model."
@@ -255,37 +258,40 @@ class RewardModelEnvironment(EnvironmentInterface):
             - answers: List of assistant responses from the conversations
 
         """
-        # Preprocess the message logs
-        reward_data = self.preprocess_data(message_logs)
+        with telemetry.trace_step(self.tracer, "RewardModelEnvironment", len(message_logs)) as span:
+            # Preprocess the message logs
+            reward_data = self.preprocess_data(message_logs)
 
-        # Score the message logs
-        rewards = self.reward_model_policy.score(reward_data)["scores"]
+            # Score the message logs
+            rewards = self.reward_model_policy.score(reward_data)["scores"]
 
-        # Create observations with meaningful content based on rewards (like math environment)
-        observations = []
-        for i, reward in enumerate(rewards):
-            content = "Environment: " + str(reward)
-            observations.append({"role": "environment", "content": content})
+            # Create observations with meaningful content based on rewards (like math environment)
+            observations = []
+            for i, reward in enumerate(rewards):
+                content = "Environment: " + str(reward)
+                observations.append({"role": "environment", "content": content})
 
-        # All episodes terminate after one step in reward model environment
-        terminateds = [True] * len(message_logs)
+            # All episodes terminate after one step in reward model environment
+            terminateds = [True] * len(message_logs)
 
-        # No additional metadata
-        metadata = [None] * len(message_logs)
+            # No additional metadata
+            metadata = [None] * len(message_logs)
 
-        # No stop strings needed
-        next_stop_strings = [None] * len(message_logs)
+            # No stop strings needed
+            next_stop_strings = [None] * len(message_logs)
 
-        answers = [message_log[-1]["content"] for message_log in message_logs]
+            answers = [message_log[-1]["content"] for message_log in message_logs]
 
-        return EnvironmentReturn(
-            observations=observations,
-            metadata=metadata,
-            next_stop_strings=next_stop_strings,
-            rewards=rewards.cpu(),
-            terminateds=torch.tensor(terminateds, dtype=torch.bool).cpu(),
-            answers=answers,
-        )
+            span.set_attribute(telemetry.ATTR_REWARD, float(rewards.mean().item()))
+
+            return EnvironmentReturn(
+                observations=observations,
+                metadata=metadata,
+                next_stop_strings=next_stop_strings,
+                rewards=rewards.cpu(),
+                terminateds=torch.tensor(terminateds, dtype=torch.bool).cpu(),
+                answers=answers,
+            )
 
     def global_post_process_and_metrics(
         self, batch: BatchedDataDict
