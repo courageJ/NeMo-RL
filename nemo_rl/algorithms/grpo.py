@@ -1691,15 +1691,17 @@ def grpo_train(
             telemetry.episode_length_mean.record(rollout_metrics.get("mean_gen_tokens_per_sample", 0))    
             telemetry.train_loss.record(metrics.get("loss", 0))
 
-            telemetry.step_time.record(timing_metrics.get("total_step_time", 0) * 1000)
-            telemetry.tokens_per_sec.record(performance_metrics.get("tokens_per_sec", 0))    
-            telemetry.tokens_per_sec_per_gpu.record(performance_metrics.get("tokens_per_sec_per_gpu", 0))
+            telemetry.step_duration.record(timing_metrics.get("total_step_time", 0) * 1000)
+            telemetry.tokens_rate.record(performance_metrics.get("tokens_per_sec", 0))
+            telemetry.tokens_rate_per_gpu.record(performance_metrics.get("tokens_per_sec_per_gpu", 0))
             
             if "train_fp_utilization" in performance_metrics:
-                telemetry.training_mfu.record(performance_metrics.get("train_fp_utilization", 0))
+                telemetry.train_mfu.record(performance_metrics.get("train_fp_utilization", 0))
             
-            telemetry.samples_per_sec.record(performance_metrics.get("samples_per_sec", 0))
-            telemetry.samples_per_sec_per_gpu.record(performance_metrics.get("samples_per_sec_per_gpu", 0))
+            telemetry.samples_rate.record(performance_metrics.get("samples_per_sec", 0))
+            telemetry.samples_rate_per_gpu.record(performance_metrics.get("samples_per_sec_per_gpu", 0))
+
+            print(f"\n📊 Telemetry 1704: {telemetry}", flush=True)
 
             # Reset the batch and set dynamic_sampling_num_gen_batches to 0
             batch_cache = None
@@ -1720,6 +1722,8 @@ def grpo_train(
 
         current_epoch += 1
         current_step = 0  # Reset step counter for new epoch
+
+    telemetry.flush()
 
 
 def validate(
@@ -2665,15 +2669,15 @@ def async_grpo_train(
             telemetry.episode_length_mean.record(rollout_metrics.get("mean_gen_tokens_per_sample", 0))    
             telemetry.train_loss.record(metrics.get("loss", 0))
 
-            telemetry.step_time.record(timing_metrics.get("total_step_time", 0) * 1000)
-            telemetry.tokens_per_sec.record(performance_metrics.get("tokens_per_sec", 0))    
-            telemetry.tokens_per_sec_per_gpu.record(performance_metrics.get("tokens_per_sec_per_gpu", 0))
+            telemetry.step_duration.record(timing_metrics.get("total_step_time", 0) * 1000)
+            telemetry.tokens_rate.record(performance_metrics.get("tokens_per_sec", 0))
+            telemetry.tokens_rate_per_gpu.record(performance_metrics.get("tokens_per_sec_per_gpu", 0))
             
             if "train_fp_utilization" in performance_metrics:
-                telemetry.training_mfu.record(performance_metrics.get("train_fp_utilization", 0))
+                telemetry.train_mfu.record(performance_metrics.get("train_fp_utilization", 0))
             
-            telemetry.samples_per_sec.record(performance_metrics.get("samples_per_sec", 0))
-            telemetry.samples_per_sec_per_gpu.record(performance_metrics.get("samples_per_sec_per_gpu", 0))
+            telemetry.samples_rate.record(performance_metrics.get("samples_per_sec", 0))
+            telemetry.samples_rate_per_gpu.record(performance_metrics.get("samples_per_sec_per_gpu", 0))
 
             timer.reset()
             step += 1
@@ -2706,4 +2710,5 @@ def async_grpo_train(
         except Exception as e:
             print(f"Error stopping replay buffer: {e}")
 
+        telemetry.flush()
         print("Async GRPO training complete!")

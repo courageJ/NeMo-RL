@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional, TypedDict, Literal
 import os
 import sys
+import logging
 
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
@@ -47,17 +48,17 @@ RL_SAMPLE_DURATION = "rl.sample.duration"
 RL_REWARD_DURATION = "rl.reward.duration"
 RL_TRAIN_DURATION = "rl.train.duration"
 RL_SYNC_DURATION = "rl.sync.duration"
-RL_STEP_TIME = "rl.step_time"
+RL_STEP_DURATION = "rl.step.duration"
 
 # Throughput
 RL_SAMPLE_SAMPLES_COUNT = "rl.sample.samples"
 RL_SAMPLE_EPISODES_COUNT = "rl.sample.episodes"
 RL_TRAIN_STEPS_COUNT = "rl.train.steps"
 RL_TRAIN_TOKENS_COUNT = "rl.train.tokens"
-RL_TOKENS_PER_SEC = "rl.tokens_per_sec"
-RL_TOKENS_PER_SEC_PER_GPU = "rl.tokens_per_sec_per_gpu"
-RL_SAMPLES_PER_SEC = "rl.samples_per_sec"
-RL_SAMPLES_PER_SEC_PER_GPU = "rl.samples_per_sec_per_gpu"
+RL_TOKENS_RATE = "rl.tokens.rate"
+RL_TOKENS_RATE_PER_GPU = "rl.tokens.rate_per_gpu"
+RL_SAMPLES_RATE = "rl.samples.rate"
+RL_SAMPLES_RATE_PER_GPU = "rl.samples.rate_per_gpu"
 
 # Performance
 RL_ENVIRONMENT_REWARD_MEAN = "rl.environment.reward.mean"
@@ -65,7 +66,7 @@ RL_ENVIRONMENT_EPISODE_LENGTH_MEAN = "rl.environment.episode.length.mean"
 RL_TRAIN_LOSS = "rl.train.loss"
 
 # Resource Utilization
-RL_TRAINING_MFU = "rl.training_mfu"
+RL_TRAIN_MFU = "rl.train.mfu"
 
 
 class TelemetryConfig(TypedDict, total=False):
@@ -79,6 +80,18 @@ def setup_telemetry(config: TelemetryConfig):
     """Sets up OpenTelemetry tracer and meter providers."""
     service_name = config.get("service_name", "nemo_rl")
     service_version = config.get("service_version", "0.1.0")
+
+    # Configure debug logging for OpenTelemetry
+    if os.environ.get("NEMO_RL_OTEL_DEBUG", "0") == "1" or config.get("debug", False):
+        # Configure root logger for opentelemetry to output to stderr
+        otel_logger = logging.getLogger("opentelemetry")
+        otel_logger.setLevel(logging.DEBUG)
+        # Avoid adding multiple handlers if already configured
+        if not otel_logger.handlers:
+            handler = logging.StreamHandler(sys.stderr)
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            otel_logger.addHandler(handler)
+        print("enabled OpenTelemetry debug logging", file=sys.stderr)
 
     if not config.get("enabled", False):
          # If disabled, we return the no-op global tracer/meter provided by the API by default
@@ -113,6 +126,7 @@ def setup_telemetry(config: TelemetryConfig):
         except Exception as e:
             print(f"Error initializing OTLP GRPC trace exporter: {e}", file=sys.stderr)
 
+
     trace.set_tracer_provider(trace_provider)
 
     # Meter Provider
@@ -123,8 +137,8 @@ def setup_telemetry(config: TelemetryConfig):
         try:
             from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
             metric_readers.append(PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=endpoint) if endpoint else OTLPMetricExporter()))
-        except ImportError:
-            print(f"Error: opentelemetry-exporter-otlp not installed. Skipping OTLP HTTP metric exporter.", file=sys.stderr)
+        except ImportError as e:
+            print(f"Error: opentelemetry-exporter-otlp not installed. Skipping OTLP HTTP metric exporter. Details: {e}", file=sys.stderr)
         except Exception as e:
             print(f"Error initializing OTLP HTTP metric exporter: {e}", file=sys.stderr)
     elif exporter_type == "otlp_grpc":
@@ -148,9 +162,11 @@ class LoggingInstrument:
 
     def record(self, amount, attributes=None):
         self.instrument.record(amount, attributes)
+        print(f"Instrument {self.name} recorded {amount} with attributes {attributes}", flush=True)
 
     def add(self, amount, attributes=None):
         self.instrument.add(amount, attributes)
+        print(f"Instrument {self.name} added {amount} with attributes {attributes}", flush=True)
 
 class RLTelemetry:
     def __init__(self, config: TelemetryConfig):
@@ -183,12 +199,12 @@ class RLTelemetry:
         self.episode_length_mean = create_histogram(RL_ENVIRONMENT_EPISODE_LENGTH_MEAN, description="Mean episode length")
         self.train_loss = create_histogram(RL_TRAIN_LOSS, description="Training loss")
 
-        self.step_time = create_histogram(RL_STEP_TIME, unit="ms", description="End-to-end duration of one RL step")
-        self.tokens_per_sec = create_histogram(RL_TOKENS_PER_SEC, description="End-to-end tokens per second")
-        self.tokens_per_sec_per_gpu = create_histogram(RL_TOKENS_PER_SEC_PER_GPU, description="End-to-end tokens per second per GPU")
-        self.training_mfu = create_histogram(RL_TRAINING_MFU, description="Training Model Floating Point Utilization (MFU)")
-        self.samples_per_sec = create_histogram(RL_SAMPLES_PER_SEC, description="End-to-end samples per second")
-        self.samples_per_sec_per_gpu = create_histogram(RL_SAMPLES_PER_SEC_PER_GPU, description="End-to-end samples per second per GPU")
+        self.step_duration = create_histogram(RL_STEP_DURATION, unit="ms", description="End-to-end duration of one RL step")
+        self.tokens_rate = create_histogram(RL_TOKENS_RATE, description="End-to-end tokens per second")
+        self.tokens_rate_per_gpu = create_histogram(RL_TOKENS_RATE_PER_GPU, description="End-to-end tokens per second per GPU")
+        self.train_mfu = create_histogram(RL_TRAIN_MFU, description="Training Model Floating Point Utilization (MFU)")
+        self.samples_rate = create_histogram(RL_SAMPLES_RATE, description="End-to-end samples per second")
+        self.samples_rate_per_gpu = create_histogram(RL_SAMPLES_RATE_PER_GPU, description="End-to-end samples per second per GPU")
 
     def flush(self):
         """Force flush all telemetry telemetry data safely."""

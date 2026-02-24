@@ -51,7 +51,9 @@ dependencies = [
   "pyzmq",
   "opentelemetry-api>=1.33.1",
   "opentelemetry-sdk>=1.33.1",
-  "opentelemetry-exporter-otlp>=1.11.1",
+  "opentelemetry-exporter-otlp>=1.33.1",
+  "opentelemetry-exporter-otlp-proto-http>=1.33.1",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.33.1",
 ]
 
 [project.optional-dependencies]
@@ -240,7 +242,7 @@ constraint-dependencies = [
   "aiohttp>=3.13.3",          # Address CVE GHSA-mqqc-3gqh-h2x8
   "pyasn1>=0.6.2",            # Address CVE GHSA-63vm-454h-vhhq
   "wheel>=0.46.2",            # Address CVE GHSA-8rrh-rw8j-w5fx
-  "protobuf>=6.33.5",         # Address CVE GHSA-7gcm-g887-7qv7
+  "protobuf>=5.29.3,<6.0.0",   # Address CVE GHSA-7gcm-g887-7qv7 (Downgraded to 5.x for opentelemetry compat)
   "python-multipart>=0.0.22", # Address CVE GHSA-wp53-j4wj-2cfg
 ]
 

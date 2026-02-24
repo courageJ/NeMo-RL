@@ -74,7 +74,7 @@ ARG NVTE_BUILD_THREADS_PER_JOB
 ARG BUILD_CUSTOM_VLLM
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/nemo_rl_venv
-ENV UV_LINK_MODE=copy
+ENV UV_LINK_MODE=symlink
 
 # Ensure DeepEP is built for H100 and B200 (also mcore inference unified memory API now invokes a torch API that requires these to be set)
 ENV TORCH_CUDA_ARCH_LIST="9.0 10.0"
@@ -87,7 +87,11 @@ COPY --from=nemo-rl tools/build-custom-vllm.sh ./tools/build-custom-vllm.sh
 COPY --from=nemo-rl --link research/ ./research/
 COPY --from=nemo-rl --link 3rdparty/ ./3rdparty/
 
-RUN --mount=type=ssh <<"EOF" bash -exu
+RUN --mount=type=ssh --mount=type=cache,target=/tmp/uv_cache <<"EOF" bash -exu
+# Restore uv cache from mount
+mkdir -p /root/.cache/uv
+rsync -a /tmp/uv_cache/ /root/.cache/uv/
+
 uv venv --seed
 uv lock
 if [[ -n "${BUILD_CUSTOM_VLLM:-}" ]]; then
@@ -101,15 +105,20 @@ fi
 # Do everything in one layer to prevent large layers.
 
 # The venv is symlinked to avoid bloating the layer size
-uv sync --link-mode symlink --locked --no-install-project
-uv sync --link-mode symlink --locked --extra vllm --no-install-project
-uv sync --link-mode symlink --locked --extra mcore --no-install-project
-uv sync --link-mode symlink --locked --extra automodel --no-install-project
-uv sync --link-mode symlink --locked --all-groups --no-install-project
+# We use symlink mode which is efficient because we have mirrored
+# the cache into the image layer at /root/.cache/uv
+uv sync --locked --no-install-project
+uv sync --locked --extra vllm --no-install-project
+uv sync --locked --extra mcore --no-install-project
+uv sync --locked --extra automodel --no-install-project
+uv sync --locked --all-groups --no-install-project
 
 # Remove the aiohttp in this uv cache dir to fully address CVE GHSA-mqqc-3gqh-h2x8
 # The ray install will include the older aiohttp version in its cache
 find /root/.cache/uv -type d -path "*ray/_private/runtime_env/agent/thirdparty_files/aiohttp*" -exec rm -rf {} +
+
+# Sync back to cache mount to persist downloads for future builds
+rsync -a /root/.cache/uv/ /tmp/uv_cache/
 EOF
 
 ENV PATH="/opt/nemo_rl_venv/bin:$PATH"
@@ -132,14 +141,20 @@ LABEL com.nvidia.build.ref="${NVIDIA_BUILD_REF}"
 
 ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
 
+# Copy files needed for prefetch_venvs.py first to cache this step
+COPY --from=nemo-rl pyproject.toml uv.lock ./
+COPY --from=nemo-rl nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
+COPY --from=nemo-rl nemo_rl/utils/__init__.py nemo_rl/utils/venvs.py nemo_rl/utils/prefetch_venvs.py ./nemo_rl/utils/
+COPY --from=nemo-rl nemo_rl/distributed/__init__.py nemo_rl/distributed/ray_actor_environment_registry.py nemo_rl/distributed/virtual_cluster.py ./nemo_rl/distributed/
+
+# Run prefetch_venvs.py (this will be cached unless the above files change)
+# Uses inherited /root/.cache/uv from hermetic stage, so valid symlinks are created.
+RUN UV_LINK_MODE=symlink uv run nemo_rl/utils/prefetch_venvs.py
+
 # Copy in source from build context (defaults to cloned repo, can be overridden)
+# Exclude files we already copied effectively, though COPY will overwrite.
 # Exclude pyproject.toml and uv.lock since those may be altered by build-custom-vllm.sh
 COPY --from=nemo-rl --exclude=pyproject.toml --exclude=uv.lock . /opt/nemo-rl
-# Unshallow the repo to get the full history (in the case it was from the scratch layer).
-# Potentially not necessary if the repo is passed in as a complete repository (w/ full git history),
-# so do a quick check before trying to unshallow.
-RUN git rev-parse --is-shallow-repository | grep -q true && git fetch --unshallow || true
-RUN UV_LINK_MODE=symlink uv run nemo_rl/utils/prefetch_venvs.py
 
 # Generate container fingerprint for frozen environment support
 # Store outside /opt/nemo-rl to avoid being overwritten by user mounts
