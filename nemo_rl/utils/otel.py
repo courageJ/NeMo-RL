@@ -10,6 +10,16 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
 import contextlib
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import json
+try:
+    from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+    HAS_PROTO = True
+except ImportError:
+    HAS_PROTO = False
 
 # Semantic conventions
 RL_SYSTEM = "rl.system"
@@ -76,22 +86,98 @@ class TelemetryConfig(TypedDict, total=False):
     exporter_type: Literal["console", "otlp_http", "otlp_grpc", "none"]
     endpoint: Optional[str]
 
+def _create_retrying_session(
+    retries: int = 5,
+    backoff_factor: float = 0.5,
+    status_forcelist: tuple = (429, 500, 502, 503, 504),
+    allowed_methods: tuple = ("POST",),
+    debug: bool = False,
+) -> requests.Session:
+    """Creates a requests Session with automatic retries."""
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+        allowed_methods=allowed_methods,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    print(f'Retry: {retry}')
+
+    if debug:
+        def log_retry_errors(response, *args, **kwargs):
+            msg = ""
+            try:
+                if response.request and response.request.body:
+                    content_type = response.request.headers.get("Content-Type", "")
+                    if "application/x-protobuf" in content_type and HAS_PROTO:
+                        if "v1/traces" in response.request.url:
+                            proto_req = ExportTraceServiceRequest()
+                            proto_req.ParseFromString(response.request.body)
+                            spans = []
+                            for res_span in proto_req.resource_spans:
+                                for scope_span in res_span.scope_spans:
+                                    for span in scope_span.spans:
+                                        spans.append(span.name)
+                            msg = f"Spans: {spans}"
+                        elif "v1/metrics" in response.request.url:
+                            proto_req = ExportMetricsServiceRequest()
+                            proto_req.ParseFromString(response.request.body)
+                            metrics = []
+                            for res_metric in proto_req.resource_metrics:
+                                for scope_metric in res_metric.scope_metrics:
+                                    for metric in scope_metric.metrics:
+                                        metrics.append(metric.name)
+                            msg = f"Metrics: {metrics}"
+                    elif "application/json" in content_type:
+                         body = json.loads(response.request.body)
+                         # Very basic JSON parsing - might need refinement based on exact structure
+                         msg = f"JSON Body keys: {list(body.keys())}"
+
+            except Exception as e:
+                msg = f"(Failed to parse payload: {e})"
+
+            if response.status_code >= 400:
+                print(f"Telemetry export error: {response.status_code} {response.reason} - {msg} - {response.text}", file=sys.stderr)
+            else:
+                print(f"Telemetry export success: {response.status_code} {response.reason} - {msg}", file=sys.stderr)
+
+        session.hooks["response"].append(log_retry_errors)
+    return session
+
 def setup_telemetry(config: TelemetryConfig):
     """Sets up OpenTelemetry tracer and meter providers."""
     service_name = config.get("service_name", "nemo_rl")
     service_version = config.get("service_version", "0.1.0")
 
     # Configure debug logging for OpenTelemetry
-    if os.environ.get("NEMO_RL_OTEL_DEBUG", "0") == "1" or config.get("debug", False):
+    debug = os.environ.get("NEMO_RL_OTEL_DEBUG", "0") == "1" or config.get("debug", False)
+    print(f"Telemetry initialized with debug={debug}", file=sys.stderr)
+    debug = True
+    if debug:
         # Configure root logger for opentelemetry to output to stderr
         otel_logger = logging.getLogger("opentelemetry")
         otel_logger.setLevel(logging.DEBUG)
+        
+        # Configure urllib3 logger to see retries
+        urllib3_logger = logging.getLogger("urllib3")
+        urllib3_logger.setLevel(logging.DEBUG)
+
         # Avoid adding multiple handlers if already configured
         if not otel_logger.handlers:
             handler = logging.StreamHandler(sys.stderr)
             handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             otel_logger.addHandler(handler)
-        print("enabled OpenTelemetry debug logging", file=sys.stderr)
+            # Share the handler with urllib3
+            urllib3_logger.addHandler(handler)
+            
+        print("enabled OpenTelemetry and urllib3 debug logging", file=sys.stderr)
 
     if not config.get("enabled", False):
          # If disabled, we return the no-op global tracer/meter provided by the API by default
@@ -112,7 +198,8 @@ def setup_telemetry(config: TelemetryConfig):
     elif exporter_type == "otlp_http":
         try:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-            trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint) if endpoint else OTLPSpanExporter()))
+            session = _create_retrying_session(debug=debug)
+            trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, session=session) if endpoint else OTLPSpanExporter(session=session)))
         except ImportError:
             print(f"Error: opentelemetry-exporter-otlp not installed. Skipping OTLP HTTP exporter.", file=sys.stderr)
         except Exception as e:
@@ -136,7 +223,8 @@ def setup_telemetry(config: TelemetryConfig):
     elif exporter_type == "otlp_http":
         try:
             from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-            metric_readers.append(PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=endpoint) if endpoint else OTLPMetricExporter()))
+            session = _create_retrying_session(debug=debug)
+            metric_readers.append(PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=endpoint, session=session) if endpoint else OTLPMetricExporter(session=session)))
         except ImportError as e:
             print(f"Error: opentelemetry-exporter-otlp not installed. Skipping OTLP HTTP metric exporter. Details: {e}", file=sys.stderr)
         except Exception as e:
@@ -168,6 +256,11 @@ class LoggingInstrument:
         self.instrument.add(amount, attributes)
         print(f"Instrument {self.name} added {amount} with attributes {attributes}", flush=True)
 
+class GaugeLoggingInstrument(LoggingInstrument):
+    def record(self, amount, attributes=None):
+        self.instrument.set(amount, attributes)
+        print(f"Instrument {self.name} set {amount} with attributes {attributes}", flush=True)
+
 class RLTelemetry:
     def __init__(self, config: TelemetryConfig):
         tracer, self.meter = setup_telemetry(config)
@@ -180,6 +273,10 @@ class RLTelemetry:
         def create_counter(name, *args, **kwargs):
             counter = self.meter.create_counter(name, *args, **kwargs)
             return LoggingInstrument(name, counter)
+
+        def create_gauge(name, *args, **kwargs):
+            gauge = self.meter.create_gauge(name, *args, **kwargs)
+            return GaugeLoggingInstrument(name, gauge)
 
         # Histograms
         self.loop_duration = create_histogram(RL_LOOP_DURATION, unit="ms", description="End-to-end duration of one RL loop iteration")
@@ -195,9 +292,9 @@ class RLTelemetry:
         self.train_tokens = create_counter(RL_TRAIN_TOKENS_COUNT, description="Number of tokens processed in training")
 
         # Gauges/Histograms for values
-        self.reward_mean = create_histogram(RL_ENVIRONMENT_REWARD_MEAN, description="Mean reward achieved")
+        self.reward_mean = create_gauge(RL_ENVIRONMENT_REWARD_MEAN, description="Mean reward achieved")
         self.episode_length_mean = create_histogram(RL_ENVIRONMENT_EPISODE_LENGTH_MEAN, description="Mean episode length")
-        self.train_loss = create_histogram(RL_TRAIN_LOSS, description="Training loss")
+        self.train_loss = create_gauge(RL_TRAIN_LOSS, description="Training loss")
 
         self.step_duration = create_histogram(RL_STEP_DURATION, unit="ms", description="End-to-end duration of one RL step")
         self.tokens_rate = create_histogram(RL_TOKENS_RATE, description="End-to-end tokens per second")

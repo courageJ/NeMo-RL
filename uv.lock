@@ -28,7 +28,7 @@ members = [
 constraints = [
     { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "brotli", specifier = ">=1.2.0" },
-    { name = "protobuf", specifier = ">=6.33.5" },
+    { name = "protobuf", specifier = ">=5.29.3,<6.0.0" },
     { name = "pyasn1", specifier = ">=0.6.2" },
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "starlette", specifier = ">=0.49.1" },
@@ -3766,12 +3766,16 @@ dependencies = [
     { name = "omegaconf" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
     { name = "pillow" },
     { name = "pip" },
     { name = "plotly" },
     { name = "pyzmq" },
     { name = "ray", extra = ["default"] },
+    { name = "requests" },
     { name = "rich" },
     { name = "setuptools" },
     { name = "swanlab" },
@@ -3896,13 +3900,17 @@ requires-dist = [
     { name = "nvtx" },
     { name = "omegaconf" },
     { name = "opentelemetry-api", specifier = ">=1.33.1" },
-    { name = "opentelemetry-exporter-otlp", specifier = ">=1.11.1" },
+    { name = "opentelemetry-exporter-otlp", specifier = ">=1.33.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.33.1" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.33.1" },
+    { name = "opentelemetry-proto", specifier = ">=1.33.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.33.1" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "pip" },
     { name = "plotly" },
     { name = "pyzmq" },
     { name = "ray", extras = ["default"], specifier = "==2.49.2" },
+    { name = "requests" },
     { name = "rich" },
     { name = "setuptools" },
     { name = "swanlab" },
@@ -4520,49 +4528,63 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-exporter-otlp"
-version = "1.11.1"
+version = "1.33.1"
 source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
 dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
 ]
-sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp/opentelemetry-exporter-otlp-1.11.1.tar.gz", hash = "sha256:c275fd2045bf28b8bfeef226f3c73ede7b5bb5d0f7c4669c508f19618a70409c" }
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp/opentelemetry_exporter_otlp-1.33.1.tar.gz", hash = "sha256:4d050311ea9486e3994575aa237e32932aad58330a31fba24fdba5c0d531cf04" }
 wheels = [
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp/opentelemetry_exporter_otlp-1.11.1-py3-none-any.whl", hash = "sha256:2eeeb8e2f3f22958dd306da44f6d5920733b6dd5442ce47e424c920c8e548aa4" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp/opentelemetry_exporter_otlp-1.33.1-py3-none-any.whl", hash = "sha256:9bcf1def35b880b55a49e31ebd63910edac14b294fd2ab884953c4deaff5b300" },
+]
+
+[[package]]
+name = "opentelemetry-exporter-otlp-proto-common"
+version = "1.33.1"
+source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
+dependencies = [
+    { name = "opentelemetry-proto" },
+]
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-common/opentelemetry_exporter_otlp_proto_common-1.33.1.tar.gz", hash = "sha256:c57b3fa2d0595a21c4ed586f74f948d259d9949b58258f11edb398f246bec131" }
+wheels = [
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-common/opentelemetry_exporter_otlp_proto_common-1.33.1-py3-none-any.whl", hash = "sha256:b81c1de1ad349785e601d02715b2d29d6818aed2c809c20219f3d1f20b038c36" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-grpc"
-version = "1.11.1"
+version = "1.33.1"
 source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
 dependencies = [
-    { name = "backoff" },
+    { name = "deprecated" },
     { name = "googleapis-common-protos" },
     { name = "grpcio" },
     { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
 ]
-sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-grpc/opentelemetry-exporter-otlp-proto-grpc-1.11.1.tar.gz", hash = "sha256:e34fc79c76e299622812da5fe37cfeffdeeea464007530488d824e6c413e6a58" }
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-grpc/opentelemetry_exporter_otlp_proto_grpc-1.33.1.tar.gz", hash = "sha256:345696af8dc19785fac268c8063f3dc3d5e274c774b308c634f39d9c21955728" }
 wheels = [
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-grpc/opentelemetry_exporter_otlp_proto_grpc-1.11.1-py3-none-any.whl", hash = "sha256:7cabcf548604ab8156644bba0e9cb0a9c50561d621be39429e32581f5c8247a6" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-grpc/opentelemetry_exporter_otlp_proto_grpc-1.33.1-py3-none-any.whl", hash = "sha256:7e8da32c7552b756e75b4f9e9c768a61eb47dee60b6550b37af541858d669ce1" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-http"
-version = "1.11.1"
+version = "1.33.1"
 source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
 dependencies = [
-    { name = "backoff" },
+    { name = "deprecated" },
     { name = "googleapis-common-protos" },
     { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
     { name = "requests" },
 ]
-sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-http/opentelemetry-exporter-otlp-proto-http-1.11.1.tar.gz", hash = "sha256:11a4a4c660f34ebc5cd455da10e405c763fb2e23ac634a9507f90bd244510a4f" }
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-http/opentelemetry_exporter_otlp_proto_http-1.33.1.tar.gz", hash = "sha256:46622d964a441acb46f463ebdc26929d9dec9efb2e54ef06acdc7305e8593c38" }
 wheels = [
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-http/opentelemetry_exporter_otlp_proto_http-1.11.1-py3-none-any.whl", hash = "sha256:53abdc27c7a0973194ac13f96a253c6f7430b921f904c288d7b62e873c3f5945" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-exporter-otlp-proto-http/opentelemetry_exporter_otlp_proto_http-1.33.1-py3-none-any.whl", hash = "sha256:ebd6c523b89a2ecba0549adb92537cc2bf647b4ee61afbbd5a4c6535aa3da7cf" },
 ]
 
 [[package]]
@@ -4581,14 +4603,14 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-proto"
-version = "1.11.1"
+version = "1.33.1"
 source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-proto/opentelemetry-proto-1.11.1.tar.gz", hash = "sha256:5df0ec69510a9e2414c0410d91a698ded5a04d3dd37f7d2a3e119e3c42a30647" }
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-proto/opentelemetry_proto-1.33.1.tar.gz", hash = "sha256:9627b0a5c90753bf3920c398908307063e4458b287bb890e5c1d6fa11ad50b68" }
 wheels = [
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-proto/opentelemetry_proto-1.11.1-py3-none-any.whl", hash = "sha256:4d4663123b4777823aa533f478c6cef3ecbcf696d8dc6ac7fd6a90f37a01eafd" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/opentelemetry-proto/opentelemetry_proto-1.33.1-py3-none-any.whl", hash = "sha256:243d285d9f29663fc7ea91a7171fcc1ccbbfff43b48df0774fd64a37d98eda70" },
 ]
 
 [[package]]
@@ -5033,17 +5055,16 @@ wheels = [
 
 [[package]]
 name = "protobuf"
-version = "6.33.5"
+version = "5.29.6"
 source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
-sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5.tar.gz", hash = "sha256:6ddcac2a081f8b7b9642c09406bc6a4290128fce5f471cddd165960bb9119e5c" }
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-5.29.6.tar.gz", hash = "sha256:da9ee6a5424b6b30fd5e45c5ea663aef540ca95f9ad99d1e887e819cdf9b8723" }
 wheels = [
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5-cp310-abi3-win32.whl", hash = "sha256:d71b040839446bac0f4d162e758bea99c8251161dae9d0983a3b88dee345153b" },
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5-cp310-abi3-win_amd64.whl", hash = "sha256:3093804752167bcab3998bec9f1048baae6e29505adaf1afd14a37bddede533c" },
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5-cp39-abi3-macosx_10_9_universal2.whl", hash = "sha256:a5cb85982d95d906df1e2210e58f8e4f1e3cdc088e52c921a041f9c9a0386de5" },
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5-cp39-abi3-manylinux2014_aarch64.whl", hash = "sha256:9b71e0281f36f179d00cbcb119cb19dec4d14a81393e5ea220f64b286173e190" },
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5-cp39-abi3-manylinux2014_s390x.whl", hash = "sha256:8afa18e1d6d20af15b417e728e9f60f3aa108ee76f23c3b2c07a2c3b546d3afd" },
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:cbf16ba3350fb7b889fca858fb215967792dc125b35c7976ca4818bee3521cf0" },
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-6.33.5-py3-none-any.whl", hash = "sha256:69915a973dd0f60f31a08b8318b73eab2bd6a392c79184b3612226b0a3f8ec02" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-5.29.6-cp310-abi3-win32.whl", hash = "sha256:62e8a3114992c7c647bce37dcc93647575fc52d50e48de30c6fcb28a6a291eb1" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-5.29.6-cp310-abi3-win_amd64.whl", hash = "sha256:7e6ad413275be172f67fdee0f43484b6de5a904cc1c3ea9804cb6fe2ff366eda" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-5.29.6-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:b5a169e664b4057183a34bdc424540e86eea47560f3c123a0d64de4e137f9269" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-5.29.6-cp38-abi3-manylinux2014_aarch64.whl", hash = "sha256:a8866b2cff111f0f863c1b3b9e7572dc7eaea23a7fae27f6fc613304046483e6" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-5.29.6-cp38-abi3-manylinux2014_x86_64.whl", hash = "sha256:e3387f44798ac1106af0233c04fb8abf543772ff241169946f698b3a9a3d3ab9" },
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/protobuf/protobuf-5.29.6-py3-none-any.whl", hash = "sha256:6b9edb641441b2da9fa8f428760fc136a49cf97a52076010cf22a2ff73438a86" },
 ]
 
 [[package]]
