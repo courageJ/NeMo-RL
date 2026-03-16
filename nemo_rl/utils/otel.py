@@ -9,6 +9,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
+from opentelemetry.sdk.metrics.view import View, ExponentialBucketHistogramAggregation
 import contextlib
 import requests
 from requests.adapters import HTTPAdapter
@@ -77,7 +78,6 @@ RL_TRAIN_LOSS = "rl.train.loss"
 
 # Resource Utilization
 RL_TRAIN_MFU = "rl.train.mfu"
-
 
 class TelemetryConfig(TypedDict, total=False):
     enabled: bool
@@ -238,7 +238,23 @@ def setup_telemetry(config: TelemetryConfig):
         except Exception as e:
             print(f"Error initializing OTLP GRPC metric exporter: {e}", file=sys.stderr)
 
-    meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers)
+    # Using ExponentialBucketHistogramAggregation for duration metrics to scale automatically
+    duration_metrics = [
+        RL_LOOP_DURATION,
+        RL_SAMPLE_DURATION,
+        RL_REWARD_DURATION,
+        RL_TRAIN_DURATION,
+        RL_SYNC_DURATION,
+        RL_STEP_DURATION
+    ]
+    views = []
+    for metric_name in duration_metrics:
+        views.append(View(
+            instrument_name=metric_name,
+            aggregation=ExponentialBucketHistogramAggregation()
+        ))
+
+    meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers, views=views)
     metrics.set_meter_provider(meter_provider)
 
     return trace.get_tracer(service_name), metrics.get_meter(service_name)
@@ -284,7 +300,8 @@ class RLTelemetry:
         self.reward_duration = create_histogram(RL_REWARD_DURATION, unit="ms", description="Duration of the reward calculation phase")
         self.train_duration = create_histogram(RL_TRAIN_DURATION, unit="ms", description="Duration of the training phase")
         self.sync_duration = create_histogram(RL_SYNC_DURATION, unit="ms", description="Duration of the weight synchronization phase")
-
+        self.step_duration = create_histogram(RL_STEP_DURATION, unit="ms", description="End-to-end duration of one RL step")
+        
         # Counters
         self.sample_samples = create_counter(RL_SAMPLE_SAMPLES_COUNT, description="Number of samples generated")
         self.sample_episodes = create_counter(RL_SAMPLE_EPISODES_COUNT, description="Number of episodes completed")
@@ -293,15 +310,13 @@ class RLTelemetry:
 
         # Gauges/Histograms for values
         self.reward_mean = create_gauge(RL_ENVIRONMENT_REWARD_MEAN, description="Mean reward achieved")
-        self.episode_length_mean = create_histogram(RL_ENVIRONMENT_EPISODE_LENGTH_MEAN, description="Mean episode length")
+        self.episode_length_mean = create_gauge(RL_ENVIRONMENT_EPISODE_LENGTH_MEAN, description="Mean episode length")
         self.train_loss = create_gauge(RL_TRAIN_LOSS, description="Training loss")
-
-        self.step_duration = create_histogram(RL_STEP_DURATION, unit="ms", description="End-to-end duration of one RL step")
-        self.tokens_rate = create_histogram(RL_TOKENS_RATE, description="End-to-end tokens per second")
-        self.tokens_rate_per_gpu = create_histogram(RL_TOKENS_RATE_PER_GPU, description="End-to-end tokens per second per GPU")
-        self.train_mfu = create_histogram(RL_TRAIN_MFU, description="Training Model Floating Point Utilization (MFU)")
-        self.samples_rate = create_histogram(RL_SAMPLES_RATE, description="End-to-end samples per second")
-        self.samples_rate_per_gpu = create_histogram(RL_SAMPLES_RATE_PER_GPU, description="End-to-end samples per second per GPU")
+        self.tokens_rate = create_gauge(RL_TOKENS_RATE, description="End-to-end tokens per second")
+        self.tokens_rate_per_gpu = create_gauge(RL_TOKENS_RATE_PER_GPU, description="End-to-end tokens per second per GPU")
+        self.train_mfu = create_gauge(RL_TRAIN_MFU, description="Training Model Floating Point Utilization (MFU)")
+        self.samples_rate = create_gauge(RL_SAMPLES_RATE, description="End-to-end samples per second")
+        self.samples_rate_per_gpu = create_gauge(RL_SAMPLES_RATE_PER_GPU, description="End-to-end samples per second per GPU")
 
     def flush(self):
         """Force flush all telemetry telemetry data safely."""

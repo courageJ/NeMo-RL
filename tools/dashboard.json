@@ -1,114 +1,93 @@
 {
   "displayName": "NeMo-RL Training Dashboard",
-  "dashboardFilters": [],
-  "description": "",
-  "labels": {},
   "mosaicLayout": {
-    "columns": 48,
+    "columns": 12,
     "tiles": [
       {
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 0,
+        "width": 6,
+        "height": 4,
         "widget": {
-          "title": "Mean Train Loss",
+          "title": "Train Loss",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "p50",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.train.loss/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.train.loss"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
-              "label": "Value",
               "scale": "LINEAR"
             }
           }
         }
       },
       {
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 0,
+        "width": 6,
+        "height": 4,
         "widget": {
-          "title": "Mean Reward",
+          "title": "Reward Mean",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y2",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.environment.reward.mean/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.environment.reward.mean"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
-            "y2Axis": {
+            "yAxis": {
               "scale": "LINEAR"
             }
           }
         }
       },
       {
-        "yPos": 16,
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 4,
+        "width": 6,
+        "height": 4,
         "widget": {
-          "title": "Mean Step Time",
+          "title": "Step Time (ms)",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.step.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.5, sum(rate(rl.step.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.9, sum(rate(rl.step.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p90",
+                "minAlignmentPeriod": "60s"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum(rate(rl.step.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "label": "Duration (ms)",
               "scale": "LINEAR"
@@ -117,36 +96,23 @@
         }
       },
       {
-        "yPos": 16,
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 4,
+        "width": 6,
+        "height": 4,
         "widget": {
-          "title": "Mean Training MFU",
+          "title": "Training MFU",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.train.mfu/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.train.mfu"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -154,36 +120,23 @@
         }
       },
       {
-        "yPos": 32,
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 8,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Tokens/sec",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.tokens.rate/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.tokens.rate_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -191,37 +144,23 @@
         }
       },
       {
-        "yPos": 32,
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 8,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Tokens/sec/GPU",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.tokens.rate_per_gpu/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.tokens.rate_per_gpu_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -229,36 +168,23 @@
         }
       },
       {
-        "yPos": 48,
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 12,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Samples/sec",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.samples.rate/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.samples.rate_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -266,37 +192,23 @@
         }
       },
       {
-        "yPos": 48,
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 12,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Samples/sec/GPU",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.samples.rate_per_gpu/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.samples.rate_per_gpu_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -304,35 +216,42 @@
         }
       },
       {
-        "yPos": 64,
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 16,
+        "width": 6,
+        "height": 4,
         "widget": {
-          "title": "Mean Loop Duration",
+          "title": "Loop Duration",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.loop.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.5, sum(rate(rl.loop.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.9, sum(rate(rl.loop.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p90",
+                "minAlignmentPeriod": "60s"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum(rate(rl.loop.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "label": "Duration (ms)",
               "scale": "LINEAR"
@@ -341,36 +260,42 @@
         }
       },
       {
-        "yPos": 64,
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 16,
+        "width": 6,
+        "height": 4,
         "widget": {
-          "title": "Mean Sample Duration",
+          "title": "Sample Duration",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.sample.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.5, sum(rate(rl.sample.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.9, sum(rate(rl.sample.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p90",
+                "minAlignmentPeriod": "60s"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum(rate(rl.sample.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "label": "Duration (ms)",
               "scale": "LINEAR"
@@ -379,67 +304,42 @@
         }
       },
       {
-        "yPos": 80,
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 20,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Reward Duration",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_PERCENTILE_50",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.reward.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.5, sum(rate(rl.reward.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s"
               },
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_PERCENTILE_95",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.reward.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.9, sum(rate(rl.reward.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p90",
+                "minAlignmentPeriod": "60s"
               },
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_PERCENTILE_99",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.reward.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.99, sum(rate(rl.reward.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "label": "Duration (ms)",
               "scale": "LINEAR"
@@ -448,68 +348,42 @@
         }
       },
       {
-        "yPos": 80,
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 20,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Train Duration",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_PERCENTILE_50",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.train.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.5, sum(rate(rl.train.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s"
               },
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_PERCENTILE_95",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.train.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.9, sum(rate(rl.train.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p90",
+                "minAlignmentPeriod": "60s"
               },
               {
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_PERCENTILE_99",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_DELTA"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.train.duration/histogram\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "histogram_quantile(0.99, sum(rate(rl.train.duration_bucket[1m])) by (le))",
+                  "unitOverride": "ms"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "label": "Duration (ms)",
               "scale": "LINEAR"
@@ -518,36 +392,23 @@
         }
       },
       {
-        "yPos": 96,
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 24,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Total Samples",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_RATE"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.sample.samples/counter\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.sample.samples_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -555,37 +416,23 @@
         }
       },
       {
-        "yPos": 96,
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 24,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Total Episodes",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_RATE"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.sample.episodes/counter\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.sample.episodes_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -593,36 +440,23 @@
         }
       },
       {
-        "yPos": 112,
-        "height": 16,
-        "width": 24,
+        "xPos": 0,
+        "yPos": 28,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Total Steps",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_RATE"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.train.steps/counter\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.train.steps_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }
@@ -630,37 +464,23 @@
         }
       },
       {
-        "yPos": 112,
-        "xPos": 24,
-        "height": 16,
-        "width": 24,
+        "xPos": 6,
+        "yPos": 28,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Total Tokens",
           "xyChart": {
-            "chartOptions": {
-              "displayHorizontal": false,
-              "mode": "COLOR"
-            },
             "dataSets": [
               {
-                "legendTemplate": "Values",
-                "minAlignmentPeriod": "60s",
-                "plotType": "LINE",
-                "targetAxis": "Y1",
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": [],
-                      "perSeriesAligner": "ALIGN_RATE"
-                    },
-                    "filter": "metric.type=\"prometheus.googleapis.com/rl.train.tokens/counter\" resource.type=\"prometheus_target\""
-                  }
-                }
+                  "prometheusQuery": "rl.train.tokens_total"
+                },
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "legendTemplate": "Values"
               }
             ],
-            "thresholds": [],
             "yAxis": {
               "scale": "LINEAR"
             }

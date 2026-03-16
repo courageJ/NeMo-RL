@@ -1708,6 +1708,7 @@ def grpo_train(
             telemetry.loop_duration.record(timing_metrics.get("total_step_time", 0) * 1000, metrics_attributes)
             telemetry.sample_duration.record(timing_metrics.get("generation", 0) * 1000, metrics_attributes)
             telemetry.reward_duration.record(timing_metrics.get("reward_calculation", 0) * 1000, metrics_attributes)
+            telemetry.sync_duration.record((timing_metrics.get("weight_sync", 0) + timing_metrics.get("logprob_inference_prep", 0)) * 1000, metrics_attributes)
             telemetry.train_duration.record(
                 (timing_metrics.get("policy_training", 0) + timing_metrics.get("policy_and_reference_logprobs", 0) + timing_metrics.get("training_prep", 0)) * 1000,
                 metrics_attributes

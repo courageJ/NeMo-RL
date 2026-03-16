@@ -191,7 +191,7 @@ def create_simple_line_widget(title, metric_otel_name, rate=False):
     # There is usually a _sum and _count. rate(_sum)/rate(_count) = average.
     
     # Check metric type from keys
-    is_histogram = any(x in metric_otel_name for x in ["duration", "time", "reward.mean", "length.mean", "loss", "mfu", "per_sec"])
+    is_histogram = "duration" in metric_otel_name
     
     query = ""
     if is_histogram:
@@ -234,8 +234,8 @@ def create_simple_line_widget(title, metric_otel_name, rate=False):
 # Build the layout
 # Row 1: Overview (Loss, Reward, Step Time, MFU)
 row_1 = [
-    create_percentile_widget("Train Loss Quantiles", METRICS["loss"]),
-    create_percentile_widget("Reward Mean Quantiles", METRICS["reward"]),
+    create_simple_line_widget("Train Loss", METRICS["loss"]),
+    create_simple_line_widget("Reward Mean", METRICS["reward"]),
     create_percentile_widget("Step Time (ms)", METRICS["step_time"]),
     create_simple_line_widget("Training MFU", METRICS["mfu"])
 ]
